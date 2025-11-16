@@ -1,0 +1,23 @@
+// lib/app/app.dart
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'router.dart';
+
+class IC01App extends ConsumerWidget {
+  const IC01App({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return MaterialApp.router(
+      title: 'IC-01 Refill',
+      debugShowCheckedModeBanner: false,
+      routerConfig: appRouter,
+      theme: ThemeData(
+        useMaterial3: true,
+        brightness: Brightness.light,
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+      ),
+    );
+  }
+}
