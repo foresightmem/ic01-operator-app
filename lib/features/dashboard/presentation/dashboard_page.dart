@@ -1,6 +1,7 @@
 // lib/features/dashboard/presentation/dashboard_page.dart
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:go_router/go_router.dart';
 
 /// Modello per rappresentare lo stato di un cliente in dashboard.
 ///
@@ -207,7 +208,9 @@ class _DashboardPageState extends State<DashboardPage> {
                     title: Text(client.name),
                     subtitle: Text('Stato: $label (${client.worstState})'),
                     onTap: () {
-                      // TODO: passo successivo -> dettaglio cliente con lista macchine
+                      final encodedName = Uri.encodeComponent(client.name);
+                      context.go('/clients/${client.clientId}?name=$encodedName');
+                    
                     },
                   ),
                 );
