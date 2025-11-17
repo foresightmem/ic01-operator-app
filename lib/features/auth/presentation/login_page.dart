@@ -3,6 +3,10 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 
+/// Schermata di login per gli operatori.
+///
+/// Permette l'accesso tramite email e password usando Supabase Auth.
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -11,10 +15,23 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
+  /// Controller per il campo email.
   final _emailCtrl = TextEditingController();
+
+  /// Controller per il campo password.
   final _passwordCtrl = TextEditingController();
+
+  /// Indica se è in corso una chiamata di login.
   bool _loading = false;
   String? _error;
+
+  /// Effettua il login tramite Supabase usando email e password inserite.
+  ///
+  /// In caso di successo:
+  /// - naviga verso la dashboard.
+  ///
+  /// In caso di errore:
+  /// - mostra uno [SnackBar] con il messaggio di errore.
 
   Future<void> _login() async {
     setState(() {
@@ -51,6 +68,8 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
   }
+
+// override spiegati in basso!
 
   @override
   void dispose() {
@@ -104,3 +123,53 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 }
+/*
+───────────────────────────────────────────────────────────────────────────────
+SPIEGAZIONE DEGLI @override IN QUESTO FILE
+───────────────────────────────────────────────────────────────────────────────
+
+In login_page.dart ci sono tre override principali. Servono a riscrivere metodi
+che Flutter mette a disposizione nelle classi StatefulWidget e State.
+
+1. @override createState()
+   ---------------------------------------------------------------------------
+   Si trova dentro la classe LoginPage (che estende StatefulWidget).
+   Questo metodo deve restituire un'istanza della classe di stato associata
+   (_LoginPageState). Quando Flutter crea il widget, questo metodo dice al
+   framework quale oggetto State deve essere usato per gestire logica e UI.
+
+   In breve: collega il widget alla sua logica/stato.
+
+2. @override dispose()
+   ---------------------------------------------------------------------------
+   Si trova dentro _LoginPageState.
+   Questo metodo viene chiamato automaticamente da Flutter quando il widget
+   viene rimosso dallo schermo in modo definitivo.
+
+   In questo file viene usato per:
+   - chiudere i controller dei campi di testo (email e password)
+   - evitare memory leak
+   - poi chiamare super.dispose() per completare la pulizia interna del framework
+
+   In breve: serve a liberare risorse quando il widget non esiste più.
+
+3. @override build()
+   ---------------------------------------------------------------------------
+   Si trova dentro _LoginPageState.
+   È il metodo più importante: Flutter lo chiama ogni volta che deve
+   disegnare l'interfaccia grafica del widget.
+
+   Qui viene costruita tutta la UI: campi email/password, bottone, loader ecc.
+
+   In breve: descrive come deve apparire la schermata di login.
+
+───────────────────────────────────────────────────────────────────────────────
+Riassunto
+- createState() → collega il widget al suo oggetto State
+- dispose() → pulisce risorse alla fine
+- build() → costruisce la UI del widget
+
+Gli override servono per sostituire i metodi base del ciclo di vita dei widget
+con versioni personalizzate specifiche per questa pagina.
+───────────────────────────────────────────────────────────────────────────────
+*/

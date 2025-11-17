@@ -6,7 +6,15 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../features/auth/presentation/login_page.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
 
+/// Router principale dell'app IC-01.
+///
+/// Gestisce:
+/// - la navigazione tra login e dashboard;
+/// - le regole di redirezione in base allo stato di autenticazione.
+
 final GoRouter appRouter = GoRouter(
+  // Se l'utente è loggato lo mandiamo alla dashboard,
+  // altrimenti il redirect lo porterà al /login.
   initialLocation: '/dashboard',
   redirect: (BuildContext context, GoRouterState state) {
     final session = Supabase.instance.client.auth.currentSession;

@@ -5,7 +5,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'app/app.dart';
 import 'app/env.dart';
-
+/// Entry point dell'applicazione IC-01 Refill.
+///
+/// - Inizializza il binding di Flutter.
+/// - Inizializza Supabase con le configurazioni definite in [AppEnv].
+/// - Wrappa l'app all'interno di [ProviderScope] per abilitare Riverpod.
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 

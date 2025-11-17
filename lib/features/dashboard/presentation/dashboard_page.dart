@@ -2,10 +2,19 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Modello per rappresentare lo stato di un cliente
+/// Modello per rappresentare lo stato di un cliente in dashboard.
+///
+/// Ogni cliente ha:
+/// - [clientId]: identificativo univoco (PK sul DB)
+/// - [name]: nome del cliente (ragione sociale / label leggibile)
+/// - [worstState]: stato "peggiore" tra tutte le macchine assegnate,
+///   normalizzato come stringa (es: 'green', 'yellow', 'red', 'black').
 class ClientState {
+  /// ID univoco del cliente (deriva da `client_id` nella view `client_states`).
   final String clientId;
+  /// Nome leggibile del cliente (deriva da `name` nella view `client_states`).
   final String name;
+  /// Stato aggregato peggiore del cliente (es. 'green', 'yellow', 'red', 'black').
   final String worstState;
 
   ClientState({
@@ -14,6 +23,10 @@ class ClientState {
     required this.worstState,
   });
 
+/// Costruttore factory che crea un [ClientState] a partire da una mappa.
+///
+/// È pensato per essere usato direttamente con il risultato di Supabase,
+/// dove ogni riga è una `Map<String, dynamic>`.
   factory ClientState.fromMap(Map<String, dynamic> map) {
     return ClientState(
       clientId: map['client_id'] as String,
@@ -22,7 +35,11 @@ class ClientState {
     );
   }
 }
-
+/// Pagina principale di dashboard per l'operatore.
+///
+/// Mostra la lista dei clienti assegnati all'operatore loggato, con:
+/// - stato aggregato peggiore (colore + label)
+/// - possibilità di refresh tramite [RefreshIndicator]
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
 
@@ -31,6 +48,11 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  /// Future che carica la lista dei clienti da mostrare in dashboard.
+  ///
+  /// Viene inizializzato in [initState] e ricalcolato:
+  /// - al primo avvio della pagina
+  /// - quando l'utente fa pull-to-refresh
   late Future<List<ClientState>> _futureClients;
 
   @override
@@ -40,8 +62,13 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   /// Legge la view `client_states` da Supabase.
-  /// Grazie alle RLS sulle machines, l'operatore vedrà solo i clienti
-  /// con macchine a lui assegnate.
+  ///
+  /// Grazie alle RLS sulle `machines`, l'operatore vedrà solo i clienti
+  /// associati a macchine a lui assegnate.
+  ///
+  /// La view `client_states` si occupa di:
+  /// - aggregare le macchine per cliente
+  /// - calcolare lo stato "peggiore" per ogni cliente
   Future<List<ClientState>> _loadClients() async {
     final supabase = Supabase.instance.client;
 
@@ -55,12 +82,23 @@ class _DashboardPageState extends State<DashboardPage> {
         .toList();
   }
 
+  /// Forza il ricaricamento della lista clienti.
+  ///
+  /// Usato dal [RefreshIndicator] per effettuare il pull-to-refresh.
   Future<void> _refresh() async {
     setState(() {
       _futureClients = _loadClients();
     });
   }
 
+  /// Restituisce un colore corrispondente allo stato della macchina/cliente.
+  ///
+  /// Mappa:
+  /// - 'green'  → verde  (OK)
+  /// - 'yellow' → arancione (attenzione)
+  /// - 'red'    → rosso (critico)
+  /// - 'black'  → nero (fermo)
+  /// - default  → grigio (sconosciuto / non mappato)
   Color _stateColor(String state) {
     switch (state) {
       case 'green':
@@ -76,6 +114,14 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
+  /// Restituisce una descrizione testuale leggibile dello stato.
+  ///
+  /// Mappa:
+  /// - 'green'  → 'OK'
+  /// - 'yellow' → 'Attenzione'
+  /// - 'red'    → 'Critico'
+  /// - 'black'  → 'Fermo'
+  /// - default  → 'Sconosciuto'
   String _stateLabel(String state) {
     switch (state) {
       case 'green':

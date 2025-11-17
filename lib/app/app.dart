@@ -4,6 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'router.dart';
 
+/// Widget root dell'app IC-01.
+///
+/// Configura:
+/// - titolo dell'app
+/// - tema Material 3
+/// - routing tramite [appRouter]
+
 class IC01App extends ConsumerWidget {
   const IC01App({super.key});
 
