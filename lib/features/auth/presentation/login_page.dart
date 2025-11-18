@@ -1,11 +1,7 @@
 // lib/features/auth/presentation/login_page.dart
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
-
-/// Schermata di login per gli operatori.
-///
-/// Permette l'accesso tramite email e password usando Supabase Auth.
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -15,50 +11,82 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  /// Controller per il campo email.
-  final _emailCtrl = TextEditingController();
-
-  /// Controller per il campo password.
-  final _passwordCtrl = TextEditingController();
-
-  /// Indica se è in corso una chiamata di login.
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
   bool _loading = false;
-  String? _error;
+  String? _errorMessage;
 
-  /// Effettua il login tramite Supabase usando email e password inserite.
-  ///
-  /// In caso di successo:
-  /// - naviga verso la dashboard.
-  ///
-  /// In caso di errore:
-  /// - mostra uno [SnackBar] con il messaggio di errore.
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
 
-  Future<void> _login() async {
+  Future<void> _signIn() async {
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+
+    if (email.isEmpty || password.isEmpty) {
+      setState(() {
+        _errorMessage = 'Inserisci email e password';
+      });
+      return;
+    }
+
     setState(() {
       _loading = true;
-      _error = null;
+      _errorMessage = null;
     });
 
+    final supabase = Supabase.instance.client;
+
     try {
-      final authResponse = await Supabase.instance.client.auth.signInWithPassword(
-        email: _emailCtrl.text.trim(),
-        password: _passwordCtrl.text.trim(),
+      final response = await supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
       );
 
-      // Se non c'è sessione, consideriamo il login fallito
-      if (authResponse.session == null) {
+      if (response.session == null || response.user == null) {
         setState(() {
-          _error = 'Login fallito: nessuna sessione ricevuta.';
+          _errorMessage = 'Login non riuscito';
         });
-      } else {
-        // Login OK -> vai in dashboard
-        if (mounted) {
-          context.go('/dashboard');
+        return;
+      }
+
+      final userId = response.user!.id;
+
+      // Recuperiamo il ruolo dal profilo
+      String role = 'refill_operator';
+      final profileList = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', userId)
+          .limit(1);
+
+      if (profileList is List && profileList.isNotEmpty) {
+        final row = profileList.first as Map<String, dynamic>;
+        final dbRole = row['role'] as String?;
+        if (dbRole != null && dbRole.isNotEmpty) {
+          role = dbRole;
         }
       }
+
+      if (!mounted) return;
+
+      if (role == 'technician') {
+        context.go('/maintenance');
+      } else {
+        // refill_operator o admin → dashboard refill
+        context.go('/dashboard');
+      }
+    } on AuthException catch (e) {
+      setState(() {
+        _errorMessage = e.message;
+      });
     } catch (e) {
       setState(() {
-        _error = 'Login fallito: $e';
+        _errorMessage = 'Errore imprevisto: $e';
       });
     } finally {
       if (mounted) {
@@ -69,60 +97,68 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-// override spiegati in basso!
-
-  @override
-  void dispose() {
-    _emailCtrl.dispose();
-    _passwordCtrl.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
-    final isLoading = _loading;
-
     return Scaffold(
-      appBar: AppBar(title: const Text('Login IC-01')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            TextField(
-              controller: _emailCtrl,
-              decoration: const InputDecoration(labelText: 'Email'),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _passwordCtrl,
-              decoration: const InputDecoration(labelText: 'Password'),
-              obscureText: true,
-            ),
-            const SizedBox(height: 24),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Text(
-                  _error!,
-                  style: const TextStyle(color: Colors.red),
+      appBar: AppBar(
+        title: const Text('IC-01 Login'),
+      ),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                  ),
                 ),
-              ),
-            ElevatedButton(
-              onPressed: isLoading ? null : _login,
-              child: isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Entra'),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _passwordController,
+                  obscureText: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Password',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                if (_errorMessage != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8.0),
+                    child: Text(
+                      _errorMessage!,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                  ),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _loading ? null : _signIn,
+                    child: _loading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text('Accedi'),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
+
 /*
 ───────────────────────────────────────────────────────────────────────────────
 SPIEGAZIONE DEGLI @override IN QUESTO FILE

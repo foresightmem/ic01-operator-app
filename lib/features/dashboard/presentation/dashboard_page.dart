@@ -43,10 +43,15 @@ class _DashboardPageState extends State<DashboardPage> {
   // 0 = Oggi/Domani, 1 = Tutti i clienti
   int _bottomIndex = 0;
 
+  // ruolo utente (refill_operator, technician, admin)
+  String? _userRole;
+  bool _roleLoading = true;
+
   @override
   void initState() {
     super.initState();
     _futureClients = _loadClients();
+    _loadUserRole();
   }
 
   Future<List<ClientState>> _loadClients() async {
@@ -60,6 +65,43 @@ class _DashboardPageState extends State<DashboardPage> {
     return (data as List<dynamic>)
         .map((row) => ClientState.fromMap(row as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<void> _loadUserRole() async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      setState(() {
+        _userRole = null;
+        _roleLoading = false;
+      });
+      return;
+    }
+
+    try {
+      final data = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .limit(1);
+
+      String? role;
+      if (data is List && data.isNotEmpty) {
+        final row = data.first as Map<String, dynamic>;
+        role = row['role'] as String?;
+      }
+
+      setState(() {
+        _userRole = role;
+        _roleLoading = false;
+      });
+    } catch (_) {
+      setState(() {
+        _userRole = null;
+        _roleLoading = false;
+      });
+    }
   }
 
   Future<void> _refresh() async {
@@ -340,6 +382,46 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
+
+    if (_roleLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // Se è un tecnico, non deve usare la dashboard refill
+    if (_userRole == 'technician') {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Accesso non consentito'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Il tuo ruolo è Tecnico specializzato.\n'
+                  'La sezione refill non è disponibile.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 16),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: () {
+                    context.go('/maintenance');
+                  },
+                  child: const Text('Vai alle manutenzioni straordinarie'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(

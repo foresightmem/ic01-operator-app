@@ -7,6 +7,7 @@ import '../features/auth/presentation/login_page.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
 import '../features/clients/presentation/client_detail_page.dart';
 import '../features/machines/presentation/machine_detail_page.dart';
+import '../features/maintenance/presentation/maintenance_tickets_page.dart';
 
 
 /// Router principale dell'app IC-01.
@@ -18,6 +19,7 @@ import '../features/machines/presentation/machine_detail_page.dart';
 final GoRouter appRouter = GoRouter(
   // Se l'utente è loggato lo mandiamo alla dashboard,
   // altrimenti il redirect lo porterà al /login.
+  
   initialLocation: '/dashboard',
   redirect: (BuildContext context, GoRouterState state) {
     final session = Supabase.instance.client.auth.currentSession;
@@ -62,6 +64,11 @@ final GoRouter appRouter = GoRouter(
         );
       },
     ),    
+    GoRoute(
+      path: '/maintenance',
+      builder: (context, state) => const MaintenanceTicketsPage(),
+    ),
+
     GoRoute(
       path: '/machines/:machineId',
       builder: (context, state) {
