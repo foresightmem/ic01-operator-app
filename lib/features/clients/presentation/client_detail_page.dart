@@ -1,9 +1,9 @@
 // lib/features/clients/presentation/client_detail_page.dart
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-
+/// Modello per rappresentare una macchina di un cliente nella lista
 class ClientMachine {
   final String machineId;
   final String code;
@@ -31,6 +31,7 @@ class ClientMachine {
   }
 }
 
+/// Pagina di dettaglio cliente: mostra le macchine di quel cliente
 class ClientDetailPage extends StatefulWidget {
   final String clientId;
   final String? clientName;
@@ -66,6 +67,12 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
     return (data as List<dynamic>)
         .map((row) => ClientMachine.fromMap(row as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<void> _refreshMachines() async {
+    setState(() {
+      _futureMachines = _loadMachines();
+    });
   }
 
   Color _stateColor(String state) {
@@ -153,8 +160,12 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
                     '${m.siteName}\nStato: $label (${m.state})',
                   ),
                   isThreeLine: true,
-                  onTap: () {
-                    context.push('/machines/${m.machineId}');
+                  onTap: () async {
+                    // Vai al dettaglio macchina, poi al ritorno ricarica la lista
+                    await context.push('/machines/${m.machineId}');
+                    if (mounted) {
+                      _refreshMachines();
+                    }
                   },
                 ),
               );
