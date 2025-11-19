@@ -64,8 +64,8 @@ class _LoginPageState extends State<LoginPage> {
           .eq('id', userId)
           .limit(1);
 
-      if (profileList is List && profileList.isNotEmpty) {
-        final row = profileList.first as Map<String, dynamic>;
+      if (profileList.isNotEmpty) {
+        final row = profileList.first;
         final dbRole = row['role'] as String?;
         if (dbRole != null && dbRole.isNotEmpty) {
           role = dbRole;

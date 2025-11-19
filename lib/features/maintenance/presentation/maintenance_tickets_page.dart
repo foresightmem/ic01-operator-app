@@ -1,5 +1,31 @@
+/// ===============================================================
+/// FILE: features/maintenance/presentation/maintenance_tickets_page.dart
+///
+/// Lista chiamate di manutenzione straordinaria:
+/// - Legge dalla view ticket_list:
+///     - ticket_id, status, description, created_at
+///     - client_name, site_name, machine_code
+/// - Mostra tutti i ticket con stato 'open' o 'assigned'.
+/// - Azioni rapide:
+///     - "Prendo in carico" -> assegna il ticket all'utente corrente.
+/// - Tap sulla card -> apre TicketDetailPage (/maintenance/:ticketId).
+/// - AppBar mostra email utente + icona logout.
+///
+/// COSA TIPICAMENTE SI MODIFICA:
+/// - Filtri sui ticket (aggiungere 'in_progress', filtrare per tecnico, ecc.).
+/// - Layout delle card, testi, colori.
+/// - Logica di assegnazione (es. evitare double-assign).
+///
+/// COSA È MEGLIO NON TOCCARE:
+/// - La query base su ticket_list (nome dei campi ticket_id, client_name...).
+/// - La costruzione di TicketItem.fromMap (deve restare allineata alla view).
+/// ===============================================================
+library;
+
 // lib/features/maintenance/presentation/maintenance_tickets_page.dart
+
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Modello per rappresentare un ticket nella lista
@@ -38,7 +64,7 @@ class TicketItem {
   }
 }
 
-/// Pagina lista ticket di manutenzione straordinarie
+/// Pagina per visualizzare e assegnare i ticket di manutenzione
 class MaintenanceTicketsPage extends StatefulWidget {
   const MaintenanceTicketsPage({super.key});
 
@@ -63,7 +89,6 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
     final data = await supabase
         .from('ticket_list')
         .select()
-        // Nelle versioni nuove di supabase-dart si usa inFilter, non in_
         .inFilter('status', ['open', 'assigned'])
         .order('created_at', ascending: true);
 
@@ -83,30 +108,21 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
     final user = supabase.auth.currentUser;
     if (user == null) return;
 
-    setState(() {
-      _loadingAction = true;
-    });
+    setState(() => _loadingAction = true);
 
     try {
-      await supabase
-          .from('tickets')
-          .update({
-            'assigned_technician_id': user.id,
-            'status': 'assigned',
-            'assigned_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', ticket.ticketId);
+      await supabase.from('tickets').update({
+        'assigned_technician_id': user.id,
+        'status': 'assigned',
+        'assigned_at': DateTime.now().toIso8601String(),
+      }).eq('id', ticket.ticketId);
 
       await _refresh();
     } catch (e) {
       // ignore: avoid_print
       print('Errore assegnazione ticket: $e');
     } finally {
-      if (mounted) {
-        setState(() {
-          _loadingAction = false;
-        });
-      }
+      if (mounted) setState(() => _loadingAction = false);
     }
   }
 
@@ -142,12 +158,30 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser;
+    final user = Supabase.instance.client.auth.currentUser;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manutenzioni straordinarie'),
+        actions: [
+          if (user != null)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Text(
+                  user.email ?? '',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ),
+            ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await Supabase.instance.client.auth.signOut();
+              if (context.mounted) context.go('/login');
+            },
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _refresh,
@@ -179,89 +213,98 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
               separatorBuilder: (_, __) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
                 final t = tickets[index];
-                final isAssignedToMe =
-                    t.assignedTechnicianId != null &&
-                    user != null &&
-                    t.assignedTechnicianId == user.id;
+                final userId = user?.id;
+                final isAssignedToMe = t.assignedTechnicianId == userId;
                 final isUnassigned = t.assignedTechnicianId == null;
                 final statusColor = _statusColor(t.status);
 
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Riga cliente + stato
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Text(
-                                t.clientName,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                return GestureDetector(
+                  onTap: () {
+                    context.push('/maintenance/${t.ticketId}');
+                  },
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // CLIENTE + STATO
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  t.clientName,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
                               ),
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                vertical: 4,
-                                horizontal: 8,
-                              ),
-                              decoration: BoxDecoration(
-                                // withOpacity è deprecato, usiamo withValues
-                                color: statusColor.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                _statusLabel(t.status),
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: statusColor,
-                                  fontWeight: FontWeight.w600,
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 4, horizontal: 8),
+                                decoration: BoxDecoration(
+                                  color:
+                                      statusColor.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  _statusLabel(t.status),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: statusColor,
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        // Sito + macchina
-                        Text(
-                          [
-                            if (t.siteName != null) t.siteName!,
-                            'Macchina: ${t.machineCode}',
-                          ].join(' • '),
-                          style: const TextStyle(fontSize: 13),
-                        ),
-                        const SizedBox(height: 8),
-                        if (t.description != null &&
-                            t.description!.trim().isNotEmpty)
+                            ],
+                          ),
+
+                          const SizedBox(height: 4),
+
+                          // SEDE + MACCHINA
                           Text(
-                            t.description!,
+                            [
+                              if (t.siteName != null) t.siteName!,
+                              'Macchina: ${t.machineCode}',
+                            ].join(' • '),
                             style: const TextStyle(fontSize: 13),
                           ),
-                        const SizedBox(height: 8),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
+
+                          const SizedBox(height: 8),
+
+                          // DESCRIZIONE
+                          if (t.description != null &&
+                              t.description!.trim().isNotEmpty)
                             Text(
-                              'Aperto il ${t.createdAt.toLocal()}',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                color: Colors.grey,
-                              ),
+                              t.description!,
+                              style: const TextStyle(fontSize: 13),
                             ),
-                            if (user != null)
+
+                          const SizedBox(height: 10),
+
+                          // FOOTER
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Aperto il ${t.createdAt.toLocal().toString().split(".").first}',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey,
+                                ),
+                              ),
                               _buildActionsForTicket(
                                 t,
                                 isAssignedToMe: isAssignedToMe,
                                 isUnassigned: isUnassigned,
                               ),
-                          ],
-                        ),
-                      ],
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 );

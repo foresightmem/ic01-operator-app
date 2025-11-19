@@ -1,3 +1,28 @@
+/// ===============================================================
+/// FILE: features/machines/presentation/machine_detail_page.dart
+///
+/// Dettaglio di una macchina (distributore):
+/// - Riceve machineId dalla route.
+/// - Carica i dati dalla view machine_states o dalla tabella machines.
+/// - Mostra:
+///     - stato percentuale (current_fill_percent).
+///     - stato colore (green/yellow/red/black).
+///     - info cliente/sede.
+/// - Contiene il bottone "Refill fatto":
+///     - crea una riga nella tabella refills.
+///     - resetta current_fill_percent a 100%.
+///     - aggiorna la UI (auto refresh).
+///
+/// COSA TIPICAMENTE SI MODIFICA:
+/// - Layout delle informazioni della macchina.
+/// - Logica di "Refill fatto" (es. chiedere conferma, undo).
+///
+/// COSA È MEGLIO NON TOCCARE:
+/// - La chiamata Supabase che crea il refill + update della macchina.
+/// - Il mapping dei campi macchina (percentuale, id, ecc.).
+/// ===============================================================
+library;
+
 // lib/features/machines/presentation/machine_detail_page.dart
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -108,7 +133,7 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
 
       setState(() {
         _machine =
-            MachineDetail.fromMap(data as Map<String, dynamic>);
+            MachineDetail.fromMap(data);
       });
     } catch (e) {
       setState(() {

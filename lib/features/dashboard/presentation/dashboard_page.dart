@@ -1,3 +1,31 @@
+/// ===============================================================
+/// FILE: features/dashboard/presentation/dashboard_page.dart
+///
+/// Dashboard refill operator:
+/// - Mostra stato dei clienti assegnati usando la view client_states.
+/// - Gestisce due modalità:
+///     - initialTab = 0: "Oggi/Domani"
+///     - initialTab = 1: "Tutti i clienti"
+/// - Calcola internamente:
+///     - quali clienti sono oggi
+///     - quali sono domani
+///     in base alla severità (black > red > yellow > green).
+/// - Permette tap su un cliente per aprire ClientDetailPage.
+/// - Mostra KPI (clienti oggi, clienti domani, macchine da refillare).
+/// - Se role == 'technician' blocca l’accesso e propone di andare
+///   alla pagina manutenzioni.
+///
+/// COSA TIPICAMENTE SI MODIFICA:
+/// - Logica di split Oggi/Domani.
+/// - KPI mostrati in alto.
+/// - Layout delle card cliente.
+///
+/// COSA È MEGLIO NON TOCCARE:
+/// - La query base su client_states (mapping dei campi deve restare coerente).
+/// - La gestione di initialTab (usata dal router per /dashboard vs /clients).
+/// ===============================================================
+library;
+
 // lib/features/dashboard/presentation/dashboard_page.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -31,7 +59,13 @@ class ClientState {
 }
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key});
+  /// initialTab: 0 = Oggi/Domani, 1 = Tutti
+  final int initialTab;
+
+  const DashboardPage({
+    super.key,
+    this.initialTab = 0,
+  });
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -50,6 +84,7 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+    _bottomIndex = widget.initialTab;
     _futureClients = _loadClients();
     _loadUserRole();
   }
@@ -87,8 +122,8 @@ class _DashboardPageState extends State<DashboardPage> {
           .limit(1);
 
       String? role;
-      if (data is List && data.isNotEmpty) {
-        final row = data.first as Map<String, dynamic>;
+      if (data.isNotEmpty) {
+        final row = data.first;
         role = row['role'] as String?;
       }
 
@@ -445,6 +480,7 @@ class _DashboardPageState extends State<DashboardPage> {
             icon: const Icon(Icons.logout),
             onPressed: () async {
               await Supabase.instance.client.auth.signOut();
+              if (context.mounted) context.go('/login');
             },
           ),
         ],
@@ -468,26 +504,6 @@ class _DashboardPageState extends State<DashboardPage> {
             return _buildBody(clients);
           },
         ),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _bottomIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _bottomIndex = index;
-          });
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.today_outlined),
-            selectedIcon: Icon(Icons.today),
-            label: 'Oggi/Domani',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.list_alt_outlined),
-            selectedIcon: Icon(Icons.list_alt),
-            label: 'Tutti',
-          ),
-        ],
       ),
     );
   }

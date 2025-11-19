@@ -1,3 +1,21 @@
+/// ===============================================================
+/// FILE: features/clients/presentation/client_detail_page.dart
+///
+/// Dettaglio di un cliente:
+/// - Riceve clientId (obbligatorio) e clientName (facoltativo) dalla route.
+/// - Carica le macchine del cliente (view client_machines).
+/// - Permette tap su una macchina per aprire MachineDetailPage.
+///
+/// COSA TIPICAMENTE SI MODIFICA:
+/// - Come vengono visualizzate le macchine (card, lista, stati colore).
+/// - Aggiunta di azioni per cliente (es. "Segna cliente completato oggi").
+///
+/// COSA È MEGLIO NON TOCCARE:
+/// - Il modo in cui legge clientId dalla route (pathParameters).
+/// - Il mapping dei campi provenienti da client_machines.
+/// ===============================================================
+library;
+
 // lib/features/clients/presentation/client_detail_page.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';

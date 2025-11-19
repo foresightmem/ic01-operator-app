@@ -3,10 +3,10 @@
 
 // ⚠️ ATTENZIONE: non committare questo file in un repo pubblico.
 
-/// Contiene le variabili di configurazione dell'ambiente applicativo.
-///
-/// Per ambienti diversi (dev, staging, prod) puoi creare
-/// più implementazioni o usare flavor diversi.
+// Contiene le variabili di configurazione dell'ambiente applicativo.
+//
+// Per ambienti diversi (dev, staging, prod) puoi creare
+// più implementazioni o usare flavor diversi.
 
 class AppEnv {
   // Incollato qui il Project URL di Supabase (es: https://abcd.supabase.co)
