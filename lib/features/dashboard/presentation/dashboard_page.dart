@@ -31,6 +31,21 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// ===============================================================
+/// DashboardPage
+///
+/// Dashboard refill operator:
+/// - Mostra lo stato dei clienti assegnati usando la view `client_states`.
+/// - Due modalità:
+///     - initialTab = 0: "Oggi/Domani"
+///     - initialTab = 1: "Tutti i clienti"
+/// - Calcola internamente quali clienti sono oggi/domani
+///   in base alla severità dello stato (black > red > yellow > green).
+/// - Permette tap su un cliente per aprire ClientDetailPage.
+/// - Mostra KPI rapidi (clienti oggi, domani, macchine da refillare).
+/// - Se role == 'technician' blocca l’accesso e invita a usare /maintenance.
+/// ===============================================================
+
 /// Modello per rappresentare lo stato di un cliente
 class ClientState {
   final String clientId;
@@ -260,13 +275,8 @@ class _DashboardPageState extends State<DashboardPage> {
             : 'Tutte OK (${client.totalMachines} macchine)';
 
         return Card(
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: color,
-            ),
-            title: Text(client.name),
-            subtitle:
-                Text('Stato: $label (${client.worstState})\n$refillInfo'),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(12),
             onTap: () async {
               final encodedName = Uri.encodeComponent(client.name);
               await context
@@ -275,9 +285,65 @@ class _DashboardPageState extends State<DashboardPage> {
                 _refresh();
               }
             },
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: ListTile(
+                leading: CircleAvatar(
+                  radius: 18,
+                  backgroundColor: color.withValues(alpha: 0.12),
+                  child: Icon(
+                    Icons.storefront,
+                    color: color,
+                    size: 20,
+                  ),
+                ),
+                title: Text(
+                  client.name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 4.0),
+                  child: Text(
+                    'Stato: $label (${client.worstState})\n$refillInfo',
+                    style: const TextStyle(fontSize: 13, height: 1.3),
+                  ),
+                ),
+                trailing: const Icon(
+                  Icons.chevron_right,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
           ),
         );
       },
+    );
+  }
+
+  /// Box KPI riusabile
+  Widget _buildKpiBox({
+    required String title,
+    required String value,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(fontSize: 12),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
     );
   }
 
@@ -301,72 +367,35 @@ class _DashboardPageState extends State<DashboardPage> {
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Clienti oggi',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$todayClients',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                child: _buildKpiBox(
+                  title: 'Clienti oggi',
+                  value: '$todayClients',
                 ),
               ),
             ),
           ),
+          const SizedBox(width: 12),
           Expanded(
             child: Card(
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Clienti domani',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$tomorrowClients',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                child: _buildKpiBox(
+                  title: 'Clienti domani',
+                  value: '$tomorrowClients',
                 ),
               ),
             ),
           ),
+          const SizedBox(width: 12),
           Expanded(
             child: Card(
               child: Padding(
                 padding:
                     const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Macchine da refillare',
-                      style: TextStyle(fontSize: 12),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$machinesToRefillToday',
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
+                child: _buildKpiBox(
+                  title: 'Macchine da refillare',
+                  value: '$machinesToRefillToday',
                 ),
               ),
             ),
@@ -490,7 +519,8 @@ class _DashboardPageState extends State<DashboardPage> {
         child: FutureBuilder<List<ClientState>>(
           future: _futureClients,
           builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
+            if (snapshot.connectionState == ConnectionState.waiting &&
+                !snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
 

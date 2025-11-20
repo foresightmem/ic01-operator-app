@@ -28,6 +28,18 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+/// ===============================================================
+/// MaintenanceTicketsPage
+///
+/// Lista chiamate di manutenzione straordinaria:
+/// - Legge dalla view `ticket_list`.
+/// - Mostra ticket con stato 'open' o 'assigned'.
+/// - Permette:
+///     - "Prendo in carico" → assegna il ticket all'utente corrente.
+/// - Tap sulla card → apre TicketDetailPage (/maintenance/:ticketId).
+/// - AppBar con email utente + logout.
+/// ===============================================================
+
 /// Modello per rappresentare un ticket nella lista
 class TicketItem {
   final String ticketId;
@@ -218,11 +230,12 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
                 final isUnassigned = t.assignedTechnicianId == null;
                 final statusColor = _statusColor(t.status);
 
-                return GestureDetector(
-                  onTap: () {
-                    context.push('/maintenance/${t.ticketId}');
-                  },
-                  child: Card(
+                return Card(
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      context.push('/maintenance/${t.ticketId}');
+                    },
                     child: Padding(
                       padding: const EdgeInsets.all(12),
                       child: Column(
@@ -237,7 +250,7 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
                                   t.clientName,
                                   style: const TextStyle(
                                     fontSize: 16,
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
                               ),
@@ -245,9 +258,8 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
                                 padding: const EdgeInsets.symmetric(
                                     vertical: 4, horizontal: 8),
                                 decoration: BoxDecoration(
-                                  color:
-                                      statusColor.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(12),
+                                  color: statusColor.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(999),
                                 ),
                                 child: Text(
                                   _statusLabel(t.status),
@@ -279,15 +291,14 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
                               t.description!.trim().isNotEmpty)
                             Text(
                               t.description!,
-                              style: const TextStyle(fontSize: 13),
+                              style: const TextStyle(fontSize: 13, height: 1.3),
                             ),
 
                           const SizedBox(height: 10),
 
-                          // FOOTER
+                          // FOOTER: data + azione
                           Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
                                 'Aperto il ${t.createdAt.toLocal().toString().split(".").first}',
