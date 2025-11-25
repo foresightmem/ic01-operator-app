@@ -73,13 +73,23 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
     _futureMachines = _loadMachines();
   }
 
+  /// Carica le macchine dalla view `client_machines`.
+  /// Ora filtrate per:
+  ///   - client_id = widget.clientId
+  ///   - assigned_operator_id = utente corrente
   Future<List<ClientMachine>> _loadMachines() async {
     final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      return [];
+    }
 
     final data = await supabase
         .from('client_machines')
         .select()
         .eq('client_id', widget.clientId)
+        .eq('assigned_operator_id', user.id)
         .order('code', ascending: true);
 
     return (data as List<dynamic>)

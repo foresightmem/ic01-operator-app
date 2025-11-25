@@ -106,10 +106,17 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<List<ClientState>> _loadClients() async {
     final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+
+    // se non c'è utente loggato, non mostriamo nulla
+    if (user == null) {
+      return [];
+    }
 
     final data = await supabase
         .from('client_states')
         .select()
+        .eq('assigned_operator_id', user.id) // 👈 filtro per operatore corrente
         .order('name', ascending: true);
 
     return (data as List<dynamic>)

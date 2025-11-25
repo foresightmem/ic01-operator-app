@@ -28,6 +28,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../features/auth/presentation/login_page.dart';
+import '../features/auth/presentation/reset_password_page.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
 import '../features/clients/presentation/client_detail_page.dart';
 import '../features/machines/presentation/machine_detail_page.dart';
@@ -124,8 +125,11 @@ final GoRouter appRouter = GoRouter(
             final id = state.pathParameters['ticketId']!;
             return TicketDetailPage(ticketId: id);
           },
-),
-
+        ),
+        GoRoute(
+          path: '/reset-password',
+          builder: (context, state) => const ResetPasswordPage(),
+        ),
       ],
     ),
   ],
