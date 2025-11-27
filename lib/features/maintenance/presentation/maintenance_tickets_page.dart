@@ -29,18 +29,10 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// ===============================================================
-/// MaintenanceTicketsPage
+/// TicketItem
 ///
-/// Lista chiamate di manutenzione straordinaria:
-/// - Legge dalla view `ticket_list`.
-/// - Mostra ticket con stato 'open' o 'assigned'.
-/// - Permette:
-///     - "Prendo in carico" → assegna il ticket all'utente corrente.
-/// - Tap sulla card → apre TicketDetailPage (/maintenance/:ticketId).
-/// - AppBar con email utente + logout.
-/// ===============================================================
-
 /// Modello per rappresentare un ticket nella lista
+/// ===============================================================
 class TicketItem {
   final String ticketId;
   final String status;
@@ -76,7 +68,17 @@ class TicketItem {
   }
 }
 
-/// Pagina per visualizzare e assegnare i ticket di manutenzione
+/// ===============================================================
+/// MaintenanceTicketsPage
+///
+/// Lista chiamate di manutenzione straordinaria:
+/// - Legge dalla view `ticket_list`.
+/// - Mostra ticket con stato 'open' o 'assigned'.
+/// - Permette:
+///     - "Prendo in carico" → assegna il ticket all'utente corrente.
+/// - Tap sulla card → apre TicketDetailPage (/maintenance/:ticketId).
+/// - AppBar con email utente + logout.
+/// ===============================================================
 class MaintenanceTicketsPage extends StatefulWidget {
   const MaintenanceTicketsPage({super.key});
 
@@ -89,10 +91,46 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
   late Future<List<TicketItem>> _futureTickets;
   bool _loadingAction = false;
 
+  // Ruolo utente (per differenziare admin / technician)
+  String? _role;
+  bool _loadingRole = true;
+
   @override
   void initState() {
     super.initState();
     _futureTickets = _loadTickets();
+    _loadRole();
+  }
+
+  Future<void> _loadRole() async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      setState(() {
+        _role = null;
+        _loadingRole = false;
+      });
+      return;
+    }
+
+    try {
+      final data = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      setState(() {
+        _role = data?['role'] as String?;
+        _loadingRole = false;
+      });
+    } catch (_) {
+      setState(() {
+        _role = null;
+        _loadingRole = false;
+      });
+    }
   }
 
   Future<List<TicketItem>> _loadTickets() async {
@@ -172,8 +210,24 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
 
+    // Finché non so il ruolo, non mostro niente (così l'admin non vede bottoni attivi)
+    if (_loadingRole) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final bool isAdmin = _role == 'admin';
+
     return Scaffold(
       appBar: AppBar(
+        // L'admin ha il tasto indietro verso la dashboard admin
+        leading: isAdmin
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => context.go('/admin'),
+              )
+            : null,
         title: const Text('Manutenzioni straordinarie'),
         actions: [
           if (user != null)
@@ -234,6 +288,7 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
                   child: InkWell(
                     borderRadius: BorderRadius.circular(12),
                     onTap: () {
+                      // Admin può aprire il dettaglio ma in sola lettura
                       context.push('/maintenance/${t.ticketId}');
                     },
                     child: Padding(
@@ -309,6 +364,7 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
                               ),
                               _buildActionsForTicket(
                                 t,
+                                isAdmin: isAdmin,
                                 isAssignedToMe: isAssignedToMe,
                                 isUnassigned: isUnassigned,
                               ),
@@ -329,6 +385,7 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
 
   Widget _buildActionsForTicket(
     TicketItem ticket, {
+    required bool isAdmin,
     required bool isAssignedToMe,
     required bool isUnassigned,
   }) {
@@ -340,6 +397,49 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
       );
     }
 
+    // 🔒 ADMIN: sola lettura, nessun bottone
+    if (isAdmin) {
+      if (ticket.status == 'closed') {
+        return const Text(
+          'Ticket chiuso',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.green,
+          ),
+        );
+      }
+
+      if (isAssignedToMe) {
+        return const Text(
+          'Assegnato a te',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: Colors.green,
+          ),
+        );
+      }
+
+      if (isUnassigned) {
+        return const Text(
+          'Non assegnato',
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey,
+          ),
+        );
+      }
+
+      return const Text(
+        'Assegnato ad altro tecnico',
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.orange,
+        ),
+      );
+    }
+
+    // 👷 Tecnico: logica originale
     if (isAssignedToMe) {
       return const Text(
         'Assegnato a te',

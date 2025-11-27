@@ -13,11 +13,6 @@
 ///     - open       -> "Prendi in carico"    -> status = assigned
 ///     - assigned   -> "Avvia intervento"    -> status = in_progress
 ///     - in_progress-> "Chiudi ticket"       -> status = closed
-/// - Quando chiudi:
-///     - inserisce una riga in visits con:
-///         visit_type = 'maintenance'
-///         operator_id = utente corrente
-///         client_id, site_id, ticket_id.
 ///
 /// COSA TIPICAMENTE SI MODIFICA:
 /// - Workflow degli stati (aggiungere 'on_hold', 'canceled', ecc.).
@@ -49,10 +44,46 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   bool _loading = true;
   bool _actionLoading = false;
 
+  // Ruolo utente per sola-lettura admin
+  String? _role;
+  bool _loadingRole = true;
+
   @override
   void initState() {
     super.initState();
     _loadTicket();
+    _loadRole();
+  }
+
+  Future<void> _loadRole() async {
+    final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      setState(() {
+        _role = null;
+        _loadingRole = false;
+      });
+      return;
+    }
+
+    try {
+      final data = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      setState(() {
+        _role = data?['role'] as String?;
+        _loadingRole = false;
+      });
+    } catch (_) {
+      setState(() {
+        _role = null;
+        _loadingRole = false;
+      });
+    }
   }
 
   Future<void> _loadTicket() async {
@@ -71,7 +102,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
       });
     } catch (e) {
       // ignore: avoid_print
-      print("Errore caricamento ticket: $e");
+      print("Errore load ticket: $e");
       setState(() => _loading = false);
     }
   }
@@ -89,8 +120,10 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
         'status': newStatus,
         if (newStatus == 'in_progress') 'assigned_technician_id': user.id,
         if (newStatus == 'assigned') 'assigned_technician_id': user.id,
-        if (newStatus == 'in_progress') 'assigned_at': DateTime.now().toIso8601String(),
-        if (newStatus == 'closed') 'closed_at': DateTime.now().toIso8601String(),
+        if (newStatus == 'in_progress')
+          'assigned_at': DateTime.now().toIso8601String(),
+        if (newStatus == 'closed')
+          'closed_at': DateTime.now().toIso8601String(),
       }).eq('id', widget.ticketId);
 
       // Se chiuso → crea una visita
@@ -147,9 +180,17 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   @override
   Widget build(BuildContext context) {
     final user = Supabase.instance.client.auth.currentUser;
+    final bool isAdmin = _role == 'admin';
 
     return Scaffold(
       appBar: AppBar(
+        // Admin: back esplicito verso la lista manutenzioni
+        leading: isAdmin
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => context.go('/maintenance'),
+              )
+            : null,
         title: const Text('Dettaglio ticket'),
         actions: [
           if (user != null)
@@ -171,7 +212,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
           ),
         ],
       ),
-      body: _loading
+      body: (_loading || _loadingRole)
           ? const Center(child: CircularProgressIndicator())
           : _ticket == null
               ? const Center(child: Text('Ticket non trovato'))
@@ -195,10 +236,11 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+              padding:
+                  const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
               decoration: BoxDecoration(
                 color: statusColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
                 _statusLabel(t['status']),
@@ -220,12 +262,26 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
         const SizedBox(height: 12),
 
         // DESCRIZIONE
-        if (t['description'] != null)
-          Text(
-            'Descrizione:\n${t['description']}',
-            style: const TextStyle(fontSize: 14),
+        if (t['description'] != null &&
+            (t['description'] as String).trim().isNotEmpty)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Descrizione:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                t['description'],
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 12),
+            ],
           ),
-        const SizedBox(height: 20),
 
         // DATA
         Text(
@@ -250,7 +306,25 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     final currentUser = Supabase.instance.client.auth.currentUser;
 
     final bool assignedToMe = assignedTech == currentUser?.id;
+    final bool isAdmin = _role == 'admin';
 
+    // 🔒 ADMIN: sola lettura, solo testi informativi
+    if (isAdmin) {
+      if (status == 'closed') {
+        return const Text(
+          'Ticket chiuso (solo visualizzazione admin)',
+          style: TextStyle(fontSize: 16, color: Colors.green),
+        );
+      }
+
+      final label = _statusLabel(status);
+      return Text(
+        '$label (solo visualizzazione admin)',
+        style: const TextStyle(fontSize: 14, color: Colors.grey),
+      );
+    }
+
+    // 👷 Tecnico: logica originale
     if (status == 'closed') {
       return const Text(
         'Ticket chiuso',
@@ -266,13 +340,9 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     }
 
     if (status == 'assigned' && assignedToMe) {
-      return Column(
-        children: [
-          ElevatedButton(
-            onPressed: () => _updateStatus('in_progress'),
-            child: const Text('Avvia intervento'),
-          ),
-        ],
+      return ElevatedButton(
+        onPressed: () => _updateStatus('in_progress'),
+        child: const Text('Avvia intervento'),
       );
     }
 
