@@ -87,7 +87,11 @@ class _LoginPageState extends State<LoginPage> {
 
       if (role == 'technician') {
         context.go('/maintenance');
-      } else {
+      } 
+      else if (role == 'admin') {
+        context.go('/admin');
+      }
+       else {
         context.go('/dashboard');
       }
     } catch (e) {

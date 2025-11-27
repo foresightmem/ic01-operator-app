@@ -91,11 +91,14 @@ class _MainShellState extends State<MainShell> {
   @override
   Widget build(BuildContext context) {
     final isTechnician = _role == 'technician';
+    final isAdmin = _role == 'admin';
     final disabledColor = Theme.of(context).disabledColor;
 
     return Scaffold(
       body: widget.child,
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: 
+      isAdmin? null
+      :NavigationBar(
         selectedIndex: widget.currentIndex,
         onDestinationSelected: (index) {
           if (_loadingRole) return;

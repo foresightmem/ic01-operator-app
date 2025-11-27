@@ -35,7 +35,7 @@ import '../features/machines/presentation/machine_detail_page.dart';
 import '../features/maintenance/presentation/maintenance_tickets_page.dart';
 import 'main_shell.dart';
 import '../features/maintenance/presentation/ticket_detail_page.dart';
-
+import '../features/admin/presentation/admin_dashboard_page.dart';
 
 /// Router principale dell'app IC-01.
 ///
@@ -129,6 +129,11 @@ final GoRouter appRouter = GoRouter(
         GoRoute(
           path: '/reset-password',
           builder: (context, state) => const ResetPasswordPage(),
+        ),
+         GoRoute(
+          path: '/admin',
+          name: 'adminDashboard',
+          builder: (context, state) => const AdminDashboardPage(),
         ),
       ],
     ),
