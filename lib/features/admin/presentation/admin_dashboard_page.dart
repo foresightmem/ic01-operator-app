@@ -1,3 +1,5 @@
+// ignore_for_file: unnecessary_underscores, unnecessary_brace_in_string_interps
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -47,21 +49,22 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
     // --- KPI "semplici" ---
     final clientsData = await supabase.from('clients').select('id, name');
-    final machinesData = await supabase
-        .from('machines')
-        .select('id, code, site_id, yearly_shots, assigned_operator_id');
+    final machinesData = await supabase.from('machines').select(
+        'id, code, site_id, yearly_shots, assigned_operator_id, current_fill_percent');
     final sitesData =
-        await supabase.from('sites').select('id, client_id');
-
-    final ticketsOpenData = await supabase
+        await supabase.from('sites').select('id, client_id, name, city');
+    final ticketsData = await supabase
         .from('tickets')
-        .select('id')
-        .eq('status', 'open');
-
-    final ticketsInProgressData = await supabase
-        .from('tickets')
-        .select('id')
-        .eq('status', 'in_progress');
+        .select(
+            'id, status, client_id, site_id, machine_id, assigned_technician_id, created_at, updated_at')
+        .order('updated_at', ascending: false)
+        .limit(30);
+    final ticketsOpenData = ticketsData
+        .where((t) => t['status'] == 'open')
+        .toList(growable: false);
+    final ticketsInProgressData = ticketsData
+        .where((t) => t['status'] == 'in_progress')
+        .toList(growable: false);
 
     final refillsTodayData = await supabase
         .from('refills')
@@ -73,11 +76,24 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         .select('id')
         .gte('created_at', startOfToday.toIso8601String());
 
-    // --- Profili operatori (per nome) ---
-    final operatorsData = await supabase
+    // per eventi
+    final refillsData = await supabase
+        .from('refills')
+        .select('id, machine_id, operator_id, previous_fill_percent, new_fill_percent, created_at')
+        .order('created_at', ascending: false)
+        .limit(30);
+
+    final visitsData = await supabase
+        .from('visits')
+        .select(
+            'id, operator_id, client_id, site_id, visit_type, created_at')
+        .order('created_at', ascending: false)
+        .limit(30);
+
+    // profili (operatori & tecnici)
+    final profilesData = await supabase
         .from('profiles')
-        .select('id, full_name, role')
-        .eq('role', 'refill_operator');
+        .select('id, full_name, role');
 
     // mappe di supporto
     final Map<String, String> clientIdToName = {};
@@ -87,17 +103,25 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           (map['name'] as String?) ?? 'Senza nome';
     }
 
+    final Map<String, Map<String, dynamic>> siteIdToSite = {};
     final Map<String, String> siteIdToClientId = {};
     for (final row in sitesData) {
       final map = row;
-      siteIdToClientId[map['id'] as String] =
-          map['client_id'] as String;
+      final id = map['id'] as String;
+      siteIdToClientId[id] = map['client_id'] as String;
+      siteIdToSite[id] = map;
     }
 
-    final Map<String, String> operatorIdToName = {};
-    for (final row in operatorsData) {
+    final Map<String, Map<String, dynamic>> machineIdToMachine = {};
+    for (final row in machinesData) {
       final map = row;
-      operatorIdToName[map['id'] as String] =
+      machineIdToMachine[map['id'] as String] = map;
+    }
+
+    final Map<String, String> profileIdToName = {};
+    for (final row in profilesData) {
+      final map = row;
+      profileIdToName[map['id'] as String] =
           (map['full_name'] as String?) ?? 'Operatore';
     }
 
@@ -131,11 +155,164 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       // per operatore (tramite assigned_operator_id)
       if (operatorId != null) {
         final operatorName =
-            operatorIdToName[operatorId] ?? 'Operatore senza nome';
+            profileIdToName[operatorId] ?? 'Operatore senza nome';
         shotsPerOperator[operatorName] =
             (shotsPerOperator[operatorName] ?? 0) + shots;
       }
     }
+
+    // ---------- Costruzione eventi recenti ----------
+
+    final List<_AdminEvent> events = [];
+
+    // Refill
+    for (final row in refillsData) {
+      final map = row;
+      final createdAt = DateTime.parse(map['created_at'] as String);
+
+      final String? machineId = map['machine_id'] as String?;
+      final machine = machineId != null ? machineIdToMachine[machineId] : null;
+      final String machineCode =
+          machine != null ? (machine['code'] as String? ?? 'N/D') : 'N/D';
+
+      String? siteName;
+      String? clientName;
+      if (machine != null) {
+        final String? siteId = machine['site_id'] as String?;
+        final site = siteId != null ? siteIdToSite[siteId] : null;
+        siteName = site?['name'] as String?;
+        final clientId = site != null ? site['client_id'] as String : null;
+        if (clientId != null) {
+          clientName = clientIdToName[clientId];
+        }
+      }
+
+      final String operatorName = profileIdToName[map['operator_id'] as String] ??
+          'Operatore';
+
+      final num? prev = map['previous_fill_percent'] as num?;
+      final num? next = map['new_fill_percent'] as num?;
+      final prevStr = prev != null ? '${prev.toStringAsFixed(0)}%' : '?';
+      final nextStr = next != null ? '${next.toStringAsFixed(0)}%' : '?';
+
+      final subtitleParts = <String>['Macchina $machineCode'];
+      if (siteName != null) subtitleParts.add(siteName);
+      if (clientName != null) subtitleParts.add(clientName);
+
+      events.add(
+        _AdminEvent(
+          timestamp: createdAt,
+          type: 'refill',
+          title: '$operatorName ha effettuato un refill',
+          subtitle: '${subtitleParts.join(' • ')}  ($prevStr → $nextStr)',
+          icon: Icons.local_cafe,
+        ),
+      );
+    }
+
+    // Ticket (usiamo updated_at per ordinare gli eventi di stato)
+    for (final row in ticketsData) {
+      final map = row;
+      final updatedAt = DateTime.parse(map['updated_at'] as String);
+      final String status = map['status'] as String;
+
+      String action;
+      IconData icon;
+      switch (status) {
+        case 'open':
+          action = 'Ticket aperto';
+          icon = Icons.report_problem;
+          break;
+        case 'assigned':
+          action = 'Ticket assegnato';
+          icon = Icons.person;
+          break;
+        case 'in_progress':
+          action = 'Intervento in corso';
+          icon = Icons.build;
+          break;
+        case 'closed':
+          action = 'Ticket chiuso';
+          icon = Icons.check_circle;
+          break;
+        default:
+          action = 'Aggiornamento ticket';
+          icon = Icons.info;
+      }
+
+      final String? clientId = map['client_id'] as String?;
+      final String clientName =
+          clientId != null ? (clientIdToName[clientId] ?? 'Cliente') : 'Cliente';
+
+      final String? machineId = map['machine_id'] as String?;
+      final machine = machineId != null ? machineIdToMachine[machineId] : null;
+      final String machineCode =
+          machine != null ? (machine['code'] as String? ?? 'N/D') : 'N/D';
+
+      final String? techId = map['assigned_technician_id'] as String?;
+      final String? techName =
+          techId != null ? profileIdToName[techId] : null;
+
+      final subtitleParts = <String>[
+        clientName,
+        'Macchina $machineCode',
+      ];
+      if (techName != null) {
+        subtitleParts.add('Tecnico: $techName');
+      }
+
+      events.add(
+        _AdminEvent(
+          timestamp: updatedAt,
+          type: 'ticket_$status',
+          title: action,
+          subtitle: subtitleParts.join(' • '),
+          icon: icon,
+        ),
+      );
+    }
+
+    // Visite
+    for (final row in visitsData) {
+      final map = row;
+      final createdAt = DateTime.parse(map['created_at'] as String);
+
+      final String? clientId = map['client_id'] as String?;
+      final String clientName =
+          clientId != null ? (clientIdToName[clientId] ?? 'Cliente') : 'Cliente';
+
+      String? siteName;
+      if (map['site_id'] != null) {
+        final site = siteIdToSite[map['site_id'] as String];
+        siteName = site?['name'] as String?;
+      }
+
+      final String operatorName =
+          profileIdToName[map['operator_id'] as String] ?? 'Operatore';
+
+      final String visitType = map['visit_type'] as String;
+      final String typeLabel =
+          visitType == 'maintenance' ? 'manutenzione' : 'refill';
+
+      final subtitleParts = <String>[clientName];
+      if (siteName != null) subtitleParts.add(siteName);
+
+      events.add(
+        _AdminEvent(
+          timestamp: createdAt,
+          type: 'visit_$visitType',
+          title: '$operatorName ha effettuato una visita $typeLabel',
+          subtitle: subtitleParts.join(' • '),
+          icon: visitType == 'maintenance'
+              ? Icons.build
+              : Icons.local_cafe_outlined,
+        ),
+      );
+    }
+
+    // ordiniamo tutti gli eventi
+    events.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+    final recentEvents = events.take(15).toList();
 
     return _AdminKpiData(
       totalClients: clientsData.length,
@@ -148,6 +325,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       shotsPerClient: shotsPerClient,
       shotsPerMachine: shotsPerMachine,
       shotsPerOperator: shotsPerOperator,
+      recentEvents: recentEvents,
     );
   }
 
@@ -161,8 +339,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        final supabase = Supabase.instance.client;
-        final user = supabase.auth.currentUser;
+
         final isAdmin = snapshot.data ?? false;
 
         if (!isAdmin) {
@@ -197,30 +374,30 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         }
 
         _kpiFuture ??= _loadKpis();
+        final user = Supabase.instance.client.auth.currentUser;
 
         return Scaffold(
           appBar: AppBar(
             title: const Text('Dashboard Admin'),
-            
-        actions: [
-          if (user != null)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Text(
-                  user.email ?? '',
-                  style: const TextStyle(fontSize: 12),
+            actions: [
+              if (user != null)
+                Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: Text(
+                      user.email ?? '',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
                 ),
+              IconButton(
+                icon: const Icon(Icons.logout),
+                onPressed: () async {
+                  await Supabase.instance.client.auth.signOut();
+                  if (context.mounted) context.go('/login');
+                },
               ),
-            ),
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await Supabase.instance.client.auth.signOut();
-              if (context.mounted) context.go('/login');
-            },
-          ),
-        ],
+            ],
           ),
           body: FutureBuilder<_AdminKpiData>(
             future: _kpiFuture,
@@ -241,7 +418,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                   if (width >= 1200) {
                     // Desktop largo
                     crossAxisCount = 4;
-                    childAspectRatio = 2.8;
+                    childAspectRatio = 3.0;
                   } else if (width >= 800) {
                     // Tablet / small desktop
                     crossAxisCount = 3;
@@ -279,7 +456,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                               value: kpi.totalClients.toString(),
                               subtitle: 'Tabella clients',
                               icon: Icons.apartment,
-                              onTap: (){
+                              onTap: () {
                                 context.go('/admin/clients');
                               },
                             ),
@@ -314,7 +491,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                               subtitle: 'refills.created_at ≥ oggi',
                               icon: Icons.local_cafe,
                               onTap: () {
-                                // esempio: potresti voler andare alla dashboard refill
                                 context.go('/dashboard');
                               },
                             ),
@@ -378,26 +554,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-
-                        const Card(
-                          child: ListTile(
-                            leading: Icon(Icons.coffee),
-                            title: Text('Ultimi refill'),
-                            subtitle: Text(
-                              'In uno step successivo li popoleremo da Supabase.',
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        const Card(
-                          child: ListTile(
-                            leading: Icon(Icons.build),
-                            title: Text('Ultime manutenzioni'),
-                            subtitle: Text(
-                              'In uno step successivo useremo tickets/visits.',
-                            ),
-                          ),
-                        ),
+                        _RecentActivitySection(events: kpi.recentEvents),
                       ],
                     ),
                   );
@@ -422,6 +579,7 @@ class _AdminKpiData {
   final Map<String, int> shotsPerClient;
   final Map<String, int> shotsPerMachine;
   final Map<String, int> shotsPerOperator;
+  final List<_AdminEvent> recentEvents;
 
   _AdminKpiData({
     required this.totalClients,
@@ -434,6 +592,7 @@ class _AdminKpiData {
     required this.shotsPerClient,
     required this.shotsPerMachine,
     required this.shotsPerOperator,
+    required this.recentEvents,
   });
 }
 
@@ -618,7 +777,7 @@ class _ShotsBarChart extends StatelessWidget {
                   width: chartWidth,
                   child: BarChart(
                     BarChartData(
-                      maxY: niceMaxY, 
+                      maxY: niceMaxY,
                       minY: 0,
                       barTouchData: BarTouchData(
                         enabled: true,
@@ -694,6 +853,7 @@ class _ShotsBarChart extends StatelessWidget {
                           sideTitles: SideTitles(
                             showTitles: true,
                             reservedSize: 36,
+                            interval: interval,
                             getTitlesWidget: (value, meta) {
                               // nascondo l’etichetta esattamente sul maxY per non farla tagliare
                               if ((value - niceMaxY).abs() < interval / 4) {
@@ -716,6 +876,7 @@ class _ShotsBarChart extends StatelessWidget {
                       gridData: FlGridData(
                         show: true,
                         drawVerticalLine: false,
+                        horizontalInterval: interval,
                       ),
                       borderData: FlBorderData(show: false),
                     ),
@@ -727,5 +888,95 @@ class _ShotsBarChart extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+/// Modello evento per "Attività recenti"
+class _AdminEvent {
+  final DateTime timestamp;
+  final String type;
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  _AdminEvent({
+    required this.timestamp,
+    required this.type,
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+}
+
+class _RecentActivitySection extends StatelessWidget {
+  final List<_AdminEvent> events;
+
+  const _RecentActivitySection({required this.events});
+
+  @override
+  Widget build(BuildContext context) {
+    if (events.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('Nessuna attività recente.'),
+        ),
+      );
+    }
+
+    final visible = events.take(8).toList();
+
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: ListView.separated(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        itemCount: visible.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
+        itemBuilder: (context, index) {
+          final e = visible[index];
+          return ListTile(
+            leading: CircleAvatar(
+              radius: 18,
+              backgroundColor: Theme.of(context)
+                  .colorScheme
+                  .primary
+                  .withAlpha(20),
+              child: Icon(
+                e.icon,
+                size: 18,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            title: Text(
+              e.title,
+              style: const TextStyle(fontSize: 14),
+            ),
+            subtitle: Text(
+              e.subtitle,
+              style: const TextStyle(fontSize: 12),
+            ),
+            trailing: Text(
+              _timeAgo(e.timestamp),
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  static String _timeAgo(DateTime time) {
+    final diff = DateTime.now().toUtc().difference(time.toUtc());
+    if (diff.inMinutes < 1) return 'Ora';
+    if (diff.inHours < 1) return '${diff.inMinutes} min fa';
+    if (diff.inHours < 24) return '${diff.inHours} h fa';
+    if (diff.inDays < 7) return '${diff.inDays} g fa';
+    final days = diff.inDays;
+    final weeks = (days / 7).floor();
+    if (weeks < 4) return '${weeks} sett fa';
+    final months = (days / 30).floor();
+    return '${months} mesi fa';
   }
 }
