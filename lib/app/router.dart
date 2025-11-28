@@ -26,6 +26,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:ic01_operator_app/features/admin/presentation/admin_clients_overview_page.dart';
+import 'package:ic01_operator_app/features/admin/presentation/admin_client_detail_page.dart';
 
 import '../features/auth/presentation/login_page.dart';
 import '../features/auth/presentation/reset_password_page.dart';
@@ -130,10 +132,21 @@ final GoRouter appRouter = GoRouter(
           path: '/reset-password',
           builder: (context, state) => const ResetPasswordPage(),
         ),
-         GoRoute(
+        GoRoute(
           path: '/admin',
           name: 'adminDashboard',
           builder: (context, state) => const AdminDashboardPage(),
+        ),
+        GoRoute(
+          path: '/admin/clients',
+          builder: (context, state) => const AdminClientsOverviewPage(),
+        ),
+        GoRoute(
+          path: '/admin/clients/:clientId',
+          builder: (context, state) {
+            final clientId = state.pathParameters['clientId']!;
+            return AdminClientDetailPage(clientId: clientId);
+          },
         ),
       ],
     ),

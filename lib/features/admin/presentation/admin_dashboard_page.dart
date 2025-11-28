@@ -279,7 +279,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                               value: kpi.totalClients.toString(),
                               subtitle: 'Tabella clients',
                               icon: Icons.apartment,
-                              onTap: null,
+                              onTap: (){
+                                context.go('/admin/clients');
+                              },
                             ),
                             _AdminKpiCard(
                               label: 'Macchine totali',
@@ -582,6 +584,17 @@ class _ShotsBarChart extends StatelessWidget {
       ..sort((a, b) => b.value.compareTo(a.value));
     final top = entries.take(5).toList();
 
+    // massimo valore tra le barre
+    final int maxValue =
+        top.map((e) => e.value).fold<int>(0, (prev, v) => v > prev ? v : prev);
+
+    // arrotonda al "bin superiore" (multipli di 10.000)
+    final double niceMaxY =
+        ((maxValue / 10000).ceil() * 10000).toDouble().clamp(1, double.infinity);
+
+    // intervallo tra le linee di griglia (4 step)
+    final double interval = niceMaxY / 4;
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final bool isNarrow = constraints.maxWidth < 500;
@@ -605,6 +618,8 @@ class _ShotsBarChart extends StatelessWidget {
                   width: chartWidth,
                   child: BarChart(
                     BarChartData(
+                      maxY: niceMaxY, 
+                      minY: 0,
                       barTouchData: BarTouchData(
                         enabled: true,
                         touchTooltipData: BarTouchTooltipData(
@@ -680,6 +695,10 @@ class _ShotsBarChart extends StatelessWidget {
                             showTitles: true,
                             reservedSize: 36,
                             getTitlesWidget: (value, meta) {
+                              // nascondo l’etichetta esattamente sul maxY per non farla tagliare
+                              if ((value - niceMaxY).abs() < interval / 4) {
+                                return const SizedBox.shrink();
+                              }
                               return Text(
                                 value.toInt().toString(),
                                 style: const TextStyle(fontSize: 10),
