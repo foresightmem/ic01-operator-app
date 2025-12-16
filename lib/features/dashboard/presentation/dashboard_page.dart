@@ -114,7 +114,7 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     final data = await supabase
-        .from('client_states')
+        .from('client_states_effective')
         .select()
         .eq('assigned_operator_id', user.id) // 👈 filtro per operatore corrente
         .order('name', ascending: true);

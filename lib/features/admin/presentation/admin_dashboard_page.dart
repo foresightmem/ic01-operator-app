@@ -486,6 +486,13 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                               },
                             ),
                             _AdminKpiCard(
+                              label: 'Copertura assenze',
+                              value: 'Gestisci',
+                              subtitle: 'Ribilancia giri operatori',
+                              icon: Icons.swap_horiz,
+                              onTap: () => context.go('/admin/coverage'),
+                            ),
+                            _AdminKpiCard(
                               label: 'Refill oggi',
                               value: kpi.refillsToday.toString(),
                               subtitle: 'refills.created_at ≥ oggi',

@@ -28,6 +28,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_clients_overview_page.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_client_detail_page.dart';
+import 'package:ic01_operator_app/features/admin/presentation/admin_coverage_page.dart';
+import 'package:ic01_operator_app/features/admin/presentation/admin_coverage_plan_page.dart';
 
 import '../features/auth/presentation/login_page.dart';
 import '../features/auth/presentation/reset_password_page.dart';
@@ -146,6 +148,17 @@ final GoRouter appRouter = GoRouter(
           builder: (context, state) {
             final clientId = state.pathParameters['clientId']!;
             return AdminClientDetailPage(clientId: clientId);
+          },
+        ),
+        GoRoute(
+          path: '/admin/coverage',
+          builder: (context, state) => const AdminCoveragePage(),
+        ),
+        GoRoute(
+          path: '/admin/coverage/:unavailabilityId',
+          builder: (context, state) {
+            final id = state.pathParameters['unavailabilityId']!;
+            return AdminCoveragePlanPage(unavailabilityId: id);
           },
         ),
       ],
