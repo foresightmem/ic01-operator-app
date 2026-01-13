@@ -8,18 +8,17 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///
 /// Dettaglio di una macchina (distributore):
 /// - Riceve machineId dalla route.
-/// - Carica i dati dalla view `machine_states`.
-/// - In più carica:
-///     - nome sede da `sites`
-///     - nome cliente da `clients`
+/// - Carica i dati dalla view `machine_effective_assignment`
+///   (rispetta assegnazioni temporanee).
 /// - Mostra:
 ///     - percentuale autonomia (current_fill_percent)
-///     - stato colore (green/yellow/red/black)
+///     - stato colore (green/yellow/red/black) calcolato da fill (fallback)
 ///     - info cliente/sede/codice macchina
 ///     - erogazioni anno (yearly_shots)
 /// - Bottone "Refill fatto":
-///     - crea una riga in `refills`
-///     - resetta `current_fill_percent` a 100% su `machines`
+///     - chiama RPC `perform_refill(p_machine_id)`
+///       che inserisce una riga in `refills` e aggiorna `machines`
+///       in modo atomico (security definer).
 ///     - ricarica i dati (auto refresh).
 /// ===============================================================
 
@@ -42,19 +41,24 @@ class MachineStateModel {
     required this.yearlyShots,
   });
 
-  /// Crea un modello solo con i dati di base dalla view `machine_states`.
-  /// Il nome cliente e quello della sede potranno essere arricchiti dopo,
-  /// a partire da site_id.
-  factory MachineStateModel.fromMap(Map<String, dynamic> map) {
+  static String _stateFromFill(double fill) {
+    if (fill <= 10) return 'black';
+    if (fill <= 20) return 'red';
+    if (fill <= 40) return 'yellow';
+    return 'green';
+  }
+
+  factory MachineStateModel.fromEffectiveMap(Map<String, dynamic> map) {
+    final fill = (map['current_fill_percent'] as num?)?.toDouble() ?? 0.0;
+    final state = (map['state'] as String?) ?? _stateFromFill(fill);
+
     return MachineStateModel(
-      machineId: map['machine_id'] as String? ??
-          map['id'] as String, // fallback se la view usa 'id'
-      code: map['code'] as String? ?? map['machine_code'] as String,
-      clientName:
-          (map['client_name'] as String?) ?? '', // spesso non presente nella view
-      siteName: map['site_name'] as String?, // potrebbe non esserci
-      currentFillPercent: (map['current_fill_percent'] as num).toDouble(),
-      state: map['state'] as String? ?? 'unknown',
+      machineId: (map['machine_id'] as String?) ?? (map['id'] as String),
+      code: (map['machine_code'] as String?) ?? (map['code'] as String?) ?? 'N/D',
+      clientName: (map['client_name'] as String?) ?? '',
+      siteName: map['site_name'] as String?,
+      currentFillPercent: fill,
+      state: state,
       yearlyShots: map['yearly_shots'] as int?,
     );
   }
@@ -62,15 +66,18 @@ class MachineStateModel {
   MachineStateModel copyWith({
     String? clientName,
     String? siteName,
+    double? currentFillPercent,
+    String? state,
+    int? yearlyShots,
   }) {
     return MachineStateModel(
       machineId: machineId,
       code: code,
       clientName: clientName ?? this.clientName,
       siteName: siteName ?? this.siteName,
-      currentFillPercent: currentFillPercent,
-      state: state,
-      yearlyShots: yearlyShots,
+      currentFillPercent: currentFillPercent ?? this.currentFillPercent,
+      state: state ?? this.state,
+      yearlyShots: yearlyShots ?? this.yearlyShots,
     );
   }
 }
@@ -102,6 +109,7 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
 
   Future<void> _loadMachine() async {
     final supabase = Supabase.instance.client;
+    final user = supabase.auth.currentUser;
 
     setState(() {
       _loading = true;
@@ -109,10 +117,20 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
     });
 
     try {
-      // 1) Leggiamo la macchina dalla view machine_states
+      if (user == null) {
+        setState(() {
+          _error = 'Utente non autenticato.';
+          _loading = false;
+        });
+        return;
+      }
+
+      // Carica da view "effective" (rispetta assegnazioni temporanee)
       final data = await supabase
-          .from('machine_states')
-          .select()
+          .from('machine_effective_assignment')
+          .select(
+            'machine_id, machine_code, current_fill_percent, yearly_shots, site_name, client_name, effective_operator_id',
+          )
           .eq('machine_id', widget.machineId)
           .maybeSingle();
 
@@ -124,43 +142,29 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
         return;
       }
 
-      final baseMachine = MachineStateModel.fromMap(data);
-      String? siteName = baseMachine.siteName;
-      String clientName = baseMachine.clientName;
-
-      // 2) Recuperiamo site_id dalla view (se presente)
-      final siteId = data['site_id'] as String?;
-      if (siteId != null) {
-        // 2a) Leggiamo la sede
-        final site = await supabase
-            .from('sites')
-            .select('name, client_id')
-            .eq('id', siteId)
-            .maybeSingle();
-
-        if (site != null) {
-          siteName = site['name'] as String?;
-          final clientId = site['client_id'] as String?;
-
-          // 2b) Da client_id recuperiamo il nome cliente
-          if (clientId != null) {
-            final client = await supabase
-                .from('clients')
-                .select('name')
-                .eq('id', clientId)
-                .maybeSingle();
-
-            if (client != null) {
-              clientName = client['name'] as String;
-            }
-          }
-        }
+      // Guardrail applicativo: l’operatore deve essere assegnatario effettivo
+      final effectiveOperatorId = data['effective_operator_id'] as String?;
+      if (effectiveOperatorId != null && effectiveOperatorId != user.id) {
+        setState(() {
+          _error = 'Non sei assegnato a questa macchina.';
+          _loading = false;
+        });
+        return;
       }
 
+      final base = MachineStateModel.fromEffectiveMap({
+        ...data,
+        'client_name': data['client_name'],
+        'site_name': data['site_name'],
+      });
+
       setState(() {
-        _machine = baseMachine.copyWith(
-          clientName: clientName,
-          siteName: siteName,
+        _machine = base.copyWith(
+          clientName: (data['client_name'] as String?) ?? base.clientName,
+          siteName: (data['site_name'] as String?) ?? base.siteName,
+          currentFillPercent:
+              (data['current_fill_percent'] as num?)?.toDouble() ?? base.currentFillPercent,
+          yearlyShots: data['yearly_shots'] as int?,
         );
         _loading = false;
       });
@@ -215,21 +219,17 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
     });
 
     try {
-      // 1) Inserisci nella tabella refills
-      await supabase.from('refills').insert({
-        'machine_id': machine.machineId,
-        'operator_id': user.id,
-        'previous_fill_percent': machine.currentFillPercent,
-        'new_fill_percent': 100,
+      // Esegue refill in modo atomico lato DB (insert refills + update machines)
+      await supabase.rpc('perform_refill', params: {
+        'p_machine_id': machine.machineId,
       });
 
-      // 2) Aggiorna la macchina a 100%
-      await supabase
-          .from('machines')
-          .update({'current_fill_percent': 100})
-          .eq('id', machine.machineId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Refill registrato.')),
+        );
+      }
 
-      // 3) Ricarica lo stato macchina
       await _loadMachine();
     } catch (e) {
       setState(() {
@@ -305,7 +305,6 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
               ),
             ),
             const SizedBox(height: 16),
-            // cerchio grande con percentuale
             Center(
               child: SizedBox(
                 width: 120,

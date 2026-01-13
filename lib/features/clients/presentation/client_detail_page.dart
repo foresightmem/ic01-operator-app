@@ -3,20 +3,15 @@
 ///
 /// Dettaglio di un cliente:
 /// - Riceve clientId (obbligatorio) e clientName (facoltativo) dalla route.
-/// - Carica le macchine del cliente (view client_machines).
+/// - Carica le macchine del cliente (effective assignment).
 /// - Permette tap su una macchina per aprire MachineDetailPage.
 ///
-/// COSA TIPICAMENTE SI MODIFICA:
-/// - Come vengono visualizzate le macchine (card, lista, stati colore).
-/// - Aggiunta di azioni per cliente (es. "Segna cliente completato oggi").
-///
-/// COSA È MEGLIO NON TOCCARE:
-/// - Il modo in cui legge clientId dalla route (pathParameters).
-/// - Il mapping dei campi provenienti da client_machines.
+/// NOTA:
+/// - Usa `machine_effective_assignment` per rispettare le assegnazioni temporanee.
+/// - Calcola lo stato (green/yellow/red/black) da current_fill_percent.
 /// ===============================================================
 library;
 
-// lib/features/clients/presentation/client_detail_page.dart
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -24,7 +19,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// Modello per rappresentare una macchina di un cliente nella lista
 class ClientMachine {
   final String machineId;
-  final String code;
+  final String code; // machine_code
   final String siteName;
   final double currentFillPercent;
   final String state;
@@ -37,14 +32,23 @@ class ClientMachine {
     required this.state,
   });
 
-  factory ClientMachine.fromMap(Map<String, dynamic> map) {
+  static String _stateFromFill(double fill) {
+    // Stessa logica usata altrove (adatta se hai soglie diverse)
+    if (fill <= 10) return 'black';
+    if (fill <= 20) return 'red';
+    if (fill <= 40) return 'yellow';
+    return 'green';
+    }
+
+  factory ClientMachine.fromEffectiveMap(Map<String, dynamic> map) {
+    final fill = (map['current_fill_percent'] as num?)?.toDouble() ?? 0.0;
+
     return ClientMachine(
       machineId: map['machine_id'] as String,
-      code: map['code'] as String,
-      siteName: map['site_name'] as String,
-      currentFillPercent:
-          (map['current_fill_percent'] as num).toDouble(),
-      state: map['state'] as String,
+      code: (map['machine_code'] as String?) ?? 'N/D',
+      siteName: (map['site_name'] as String?) ?? 'Sede',
+      currentFillPercent: fill,
+      state: _stateFromFill(fill),
     );
   }
 }
@@ -73,28 +77,23 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
     _futureMachines = _loadMachines();
   }
 
-  /// Carica le macchine dalla view `client_machines`.
-  /// Ora filtrate per:
+  /// Carica le macchine dalla view `machine_effective_assignment`.
+  /// Filtri:
   ///   - client_id = widget.clientId
-  ///   - assigned_operator_id = utente corrente
+  ///   - effective_operator_id = utente corrente
   Future<List<ClientMachine>> _loadMachines() async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
-
-    if (user == null) {
-      return [];
-    }
+    if (user == null) return [];
 
     final data = await supabase
-        .from('client_machines')
-        .select()
+        .from('machine_effective_assignment')
+        .select('machine_id, machine_code, current_fill_percent, site_name')
         .eq('client_id', widget.clientId)
-        .eq('assigned_operator_id', user.id)
-        .order('code', ascending: true);
+        .eq('effective_operator_id', user.id);
 
-    return (data as List<dynamic>)
-        .map((row) => ClientMachine.fromMap(row as Map<String, dynamic>))
-        .toList();
+    final rows = (data as List).cast<Map<String, dynamic>>();
+    return rows.map(ClientMachine.fromEffectiveMap).toList();
   }
 
   Future<void> _refreshMachines() async {
@@ -189,7 +188,6 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
                   ),
                   isThreeLine: true,
                   onTap: () async {
-                    // Vai al dettaglio macchina, poi al ritorno ricarica la lista
                     await context.push('/machines/${m.machineId}');
                     if (mounted) {
                       _refreshMachines();
