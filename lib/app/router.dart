@@ -30,6 +30,7 @@ import 'package:ic01_operator_app/features/admin/presentation/admin_clients_over
 import 'package:ic01_operator_app/features/admin/presentation/admin_client_detail_page.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_coverage_page.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_coverage_plan_page.dart';
+import 'package:ic01_operator_app/models/admin_event.dart';
 
 import '../features/auth/presentation/login_page.dart';
 import '../features/auth/presentation/reset_password_page.dart';
@@ -40,6 +41,9 @@ import '../features/maintenance/presentation/maintenance_tickets_page.dart';
 import 'main_shell.dart';
 import '../features/maintenance/presentation/ticket_detail_page.dart';
 import '../features/admin/presentation/admin_dashboard_page.dart';
+import '../features/admin/presentation/admin_activities_page.dart';
+
+
 
 /// Router principale dell'app IC-01.
 ///
@@ -161,6 +165,41 @@ final GoRouter appRouter = GoRouter(
             return AdminCoveragePlanPage(unavailabilityId: id);
           },
         ),
+
+        GoRoute(
+          path: '/admin/activities',
+          builder: (context, state) {
+            final raw = state.extra;
+            // Se non arriva nulla, mostra pagina vuota
+            if (raw == null) {
+              return const AdminActivitiesPage(events: <AdminEvent>[]);
+            }
+
+            // extra su web è spesso un JSArray: trattalo come List non tipizzata
+            if (raw is List) {
+              final converted = <AdminEvent>[];
+
+              for (final item in raw) {
+                final d = item as dynamic; // runtime: _AdminEvent
+                converted.add(
+                  AdminEvent(
+                    timestamp: d.timestamp as DateTime,
+                    type: d.type as String,
+                    title: d.title as String,
+                    subtitle: d.subtitle as String,
+                    icon: d.icon as IconData,
+                  ),
+                );
+              }
+
+              return AdminActivitiesPage(events: converted);
+            }
+
+            // qualsiasi altro caso
+            return const AdminActivitiesPage(events: <AdminEvent>[]);
+          },
+        ),
+          
       ],
     ),
   ],

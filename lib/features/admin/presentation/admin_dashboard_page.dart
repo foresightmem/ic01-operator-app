@@ -79,21 +79,20 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     // per eventi
     final refillsData = await supabase
         .from('refills')
-        .select('id, machine_id, operator_id, previous_fill_percent, new_fill_percent, created_at')
+        .select(
+            'id, machine_id, operator_id, previous_fill_percent, new_fill_percent, created_at')
         .order('created_at', ascending: false)
         .limit(30);
 
     final visitsData = await supabase
         .from('visits')
-        .select(
-            'id, operator_id, client_id, site_id, visit_type, created_at')
+        .select('id, operator_id, client_id, site_id, visit_type, created_at')
         .order('created_at', ascending: false)
         .limit(30);
 
     // profili (operatori & tecnici)
-    final profilesData = await supabase
-        .from('profiles')
-        .select('id, full_name, role');
+    final profilesData =
+        await supabase.from('profiles').select('id, full_name, role');
 
     // mappe di supporto
     final Map<String, String> clientIdToName = {};
@@ -147,8 +146,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         final clientId = siteIdToClientId[siteId];
         if (clientId != null) {
           final clientName = clientIdToName[clientId] ?? 'Senza nome';
-          shotsPerClient[clientName] =
-              (shotsPerClient[clientName] ?? 0) + shots;
+          shotsPerClient[clientName] = (shotsPerClient[clientName] ?? 0) + shots;
         }
       }
 
@@ -162,7 +160,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
 
     // ---------- Costruzione eventi recenti ----------
-
     final List<_AdminEvent> events = [];
 
     // Refill
@@ -187,8 +184,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         }
       }
 
-      final String operatorName = profileIdToName[map['operator_id'] as String] ??
-          'Operatore';
+      final String operatorName =
+          profileIdToName[map['operator_id'] as String] ?? 'Operatore';
 
       final num? prev = map['previous_fill_percent'] as num?;
       final num? next = map['new_fill_percent'] as num?;
@@ -250,8 +247,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           machine != null ? (machine['code'] as String? ?? 'N/D') : 'N/D';
 
       final String? techId = map['assigned_technician_id'] as String?;
-      final String? techName =
-          techId != null ? profileIdToName[techId] : null;
+      final String? techName = techId != null ? profileIdToName[techId] : null;
 
       final subtitleParts = <String>[
         clientName,
@@ -291,8 +287,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           profileIdToName[map['operator_id'] as String] ?? 'Operatore';
 
       final String visitType = map['visit_type'] as String;
-      final String typeLabel =
-          visitType == 'maintenance' ? 'manutenzione' : 'refill';
+      final String typeLabel = visitType == 'maintenance' ? 'manutenzione' : 'refill';
 
       final subtitleParts = <String>[clientName];
       if (siteName != null) subtitleParts.add(siteName);
@@ -303,9 +298,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           type: 'visit_$visitType',
           title: '$operatorName ha effettuato una visita $typeLabel',
           subtitle: subtitleParts.join(' • '),
-          icon: visitType == 'maintenance'
-              ? Icons.build
-              : Icons.local_cafe_outlined,
+          icon:
+              visitType == 'maintenance' ? Icons.build : Icons.local_cafe_outlined,
         ),
       );
     }
@@ -435,9 +429,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          kIsWeb
-                              ? 'Overview flotta (web)'
-                              : 'Overview flotta (app)',
+                          kIsWeb ? 'Overview flotta (web)' : 'Overview flotta (app)',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 16),
@@ -556,12 +548,13 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
                         const SizedBox(height: 24),
 
-                        Text(
-                          'Attività recenti',
-                          style: Theme.of(context).textTheme.titleMedium,
+                        // Preview "Attività recenti" (spostate su pagina dedicata)
+                        _RecentActivityPreviewCard(
+                          events: kpi.recentEvents,
+                          onOpenAll: () => context.go('/admin/activities',
+                          extra: kpi.recentEvents
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        _RecentActivitySection(events: kpi.recentEvents),
                       ],
                     ),
                   );
@@ -755,8 +748,9 @@ class _ShotsBarChart extends StatelessWidget {
         top.map((e) => e.value).fold<int>(0, (prev, v) => v > prev ? v : prev);
 
     // arrotonda al "bin superiore" (multipli di 10.000)
-    final double niceMaxY =
-        ((maxValue / 10000).ceil() * 10000).toDouble().clamp(1, double.infinity);
+    final double niceMaxY = ((maxValue / 10000).ceil() * 10000)
+        .toDouble()
+        .clamp(1, double.infinity);
 
     // intervallo tra le linee di griglia (4 step)
     final double interval = niceMaxY / 4;
@@ -915,61 +909,111 @@ class _AdminEvent {
   });
 }
 
-class _RecentActivitySection extends StatelessWidget {
+/// Card preview: sostituisce la sezione completa "Attività recenti" nella dashboard.
+/// La lista completa va su pagina dedicata.
+class _RecentActivityPreviewCard extends StatelessWidget {
   final List<_AdminEvent> events;
+  final VoidCallback onOpenAll;
 
-  const _RecentActivitySection({required this.events});
+  const _RecentActivityPreviewCard({
+    required this.events,
+    required this.onOpenAll,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (events.isEmpty) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Text('Nessuna attività recente.'),
-        ),
-      );
-    }
-
-    final visible = events.take(8).toList();
+    final theme = Theme.of(context);
+    final preview = events.take(3).toList();
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      child: ListView.separated(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        itemCount: visible.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          final e = visible[index];
-          return ListTile(
-            leading: CircleAvatar(
-              radius: 18,
-              backgroundColor: Theme.of(context)
-                  .colorScheme
-                  .primary
-                  .withAlpha(20),
-              child: Icon(
-                e.icon,
-                size: 18,
-                color: Theme.of(context).colorScheme.primary,
-              ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Attività recenti',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+                TextButton(
+                  onPressed: onOpenAll,
+                  child: const Text('Vedi tutte'),
+                ),
+              ],
             ),
-            title: Text(
-              e.title,
-              style: const TextStyle(fontSize: 14),
-            ),
-            subtitle: Text(
-              e.subtitle,
-              style: const TextStyle(fontSize: 12),
-            ),
-            trailing: Text(
-              _timeAgo(e.timestamp),
-              style: const TextStyle(fontSize: 11, color: Colors.grey),
-            ),
-          );
-        },
+            const SizedBox(height: 8),
+            if (events.isEmpty)
+              Text(
+                'Nessuna attività recente.',
+                style: theme.textTheme.bodyMedium,
+              )
+            else
+              ...[
+                for (final e in preview)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: theme.colorScheme.primary.withAlpha(20),
+                          child: Icon(
+                            e.icon,
+                            size: 16,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                e.title,
+                                style: theme.textTheme.bodyMedium?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                e.subtitle,
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.outline,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          _timeAgo(e.timestamp),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton.icon(
+                    onPressed: onOpenAll,
+                    icon: const Icon(Icons.history),
+                    label: const Text('Apri attività'),
+                  ),
+                ),
+              ],
+          ],
+        ),
       ),
     );
   }
