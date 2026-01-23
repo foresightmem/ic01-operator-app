@@ -4,82 +4,149 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// ===============================================================
-/// MachineDetailPage
+/// MachineDetailPage (Consumabili a dosi)
 ///
-/// Dettaglio di una macchina (distributore):
-/// - Riceve machineId dalla route.
-/// - Carica i dati dalla view `machine_effective_assignment`
-///   (rispetta assegnazioni temporanee).
-/// - Mostra:
-///     - percentuale autonomia (current_fill_percent)
-///     - stato colore (green/yellow/red/black) calcolato da fill (fallback)
-///     - info cliente/sede/codice macchina
-///     - erogazioni anno (yearly_shots)
-/// - Bottone "Refill fatto":
-///     - chiama RPC `perform_refill(p_machine_id)`
-///       che inserisce una riga in `refills` e aggiorna `machines`
-///       in modo atomico (security definer).
-///     - ricarica i dati (auto refresh).
+/// - Carica i dati macchina + consumabili dalla view:
+///     public.machine_effective_consumables
+///   (rispetta assegnazioni temporanee tramite machine_effective_assignment)
+///
+/// - Ogni consumabile ha:
+///     capacity_units (massimo)
+///     current_units  (rimanente)
+///     is_enabled
+///
+/// - Mostra una griglia 2x2 di mini-cerchi (coffee/milk/powder/water).
+/// - Per ogni consumabile abilitat0, mostra bottone singolo "Refill"
+///   che chiama RPC:
+///     perform_refill_consumable(p_machine_id, p_type)
+///   (reset current_units = capacity_units in modo atomico lato DB)
 /// ===============================================================
 
-class MachineStateModel {
-  final String machineId;
-  final String code;
-  final String clientName;
-  final String? siteName;
-  final double currentFillPercent;
-  final String state;
-  final int? yearlyShots;
+enum ConsumableType { coffee, milk, powder, water }
 
-  MachineStateModel({
-    required this.machineId,
-    required this.code,
-    required this.clientName,
-    required this.siteName,
-    required this.currentFillPercent,
-    required this.state,
-    required this.yearlyShots,
+ConsumableType? consumableTypeFromDb(String s) {
+  switch (s) {
+    case 'coffee':
+      return ConsumableType.coffee;
+    case 'milk':
+      return ConsumableType.milk;
+    case 'powder':
+      return ConsumableType.powder;
+    case 'water':
+      return ConsumableType.water;
+    default:
+      return null;
+  }
+}
+
+String consumableTypeToDb(ConsumableType t) {
+  switch (t) {
+    case ConsumableType.coffee:
+      return 'coffee';
+    case ConsumableType.milk:
+      return 'milk';
+    case ConsumableType.powder:
+      return 'powder';
+    case ConsumableType.water:
+      return 'water';
+  }
+}
+
+String consumableLabel(ConsumableType t) {
+  switch (t) {
+    case ConsumableType.coffee:
+      return 'Caffè';
+    case ConsumableType.milk:
+      return 'Latte';
+    case ConsumableType.powder:
+      return 'Polveri';
+    case ConsumableType.water:
+      return 'Acqua';
+  }
+}
+
+IconData consumableIcon(ConsumableType t) {
+  switch (t) {
+    case ConsumableType.coffee:
+      return Icons.coffee;
+    case ConsumableType.milk:
+      return Icons.local_drink; // semplice e leggibile
+    case ConsumableType.powder:
+      return Icons.grain;
+    case ConsumableType.water:
+      return Icons.water_drop;
+  }
+}
+
+class ConsumableState {
+  final ConsumableType type;
+  final int capacityUnits;
+  final int currentUnits;
+  final bool isEnabled;
+  final DateTime? updatedAt;
+
+  const ConsumableState({
+    required this.type,
+    required this.capacityUnits,
+    required this.currentUnits,
+    required this.isEnabled,
+    required this.updatedAt,
   });
 
-  static String _stateFromFill(double fill) {
-    if (fill <= 10) return 'black';
-    if (fill <= 20) return 'red';
-    if (fill <= 40) return 'yellow';
-    return 'green';
+  double get percent {
+    if (!isEnabled) return 0;
+    if (capacityUnits <= 0) return 0;
+    final p = (currentUnits / capacityUnits) * 100.0;
+    if (p.isNaN || p.isInfinite) return 0;
+    return p.clamp(0, 100);
   }
 
-  factory MachineStateModel.fromEffectiveMap(Map<String, dynamic> map) {
-    final fill = (map['current_fill_percent'] as num?)?.toDouble() ?? 0.0;
-    final state = (map['state'] as String?) ?? _stateFromFill(fill);
+  bool get isFull => isEnabled && capacityUnits > 0 && currentUnits >= capacityUnits;
+  bool get isConfigMissing => isEnabled && capacityUnits <= 0;
 
-    return MachineStateModel(
-      machineId: (map['machine_id'] as String?) ?? (map['id'] as String),
-      code: (map['machine_code'] as String?) ?? (map['code'] as String?) ?? 'N/D',
-      clientName: (map['client_name'] as String?) ?? '',
-      siteName: map['site_name'] as String?,
-      currentFillPercent: fill,
-      state: state,
-      yearlyShots: map['yearly_shots'] as int?,
+  factory ConsumableState.fromMap(Map<String, dynamic> map) {
+    final t = consumableTypeFromDb(map['consumable_type'] as String? ?? '');
+    if (t == null) {
+      throw Exception('Consumable type sconosciuto: ${map['consumable_type']}');
+    }
+
+    final cap = (map['capacity_units'] as num?)?.toInt() ?? 0;
+    final cur = (map['current_units'] as num?)?.toInt() ?? 0;
+    final enabled = (map['is_enabled'] as bool?) ?? true;
+
+    DateTime? updated;
+    final rawUpdated = map['updated_at'];
+    if (rawUpdated is String) {
+      updated = DateTime.tryParse(rawUpdated);
+    }
+
+    // Coerenza: clamp a 0..capacity
+    final safeCap = cap < 0 ? 0 : cap;
+    final safeCur = cur < 0 ? 0 : cur;
+    final normalizedCur = safeCap > 0 ? safeCur.clamp(0, safeCap) : safeCur;
+
+    return ConsumableState(
+      type: t,
+      capacityUnits: safeCap,
+      currentUnits: normalizedCur,
+      isEnabled: enabled,
+      updatedAt: updated,
     );
   }
+}
 
-  MachineStateModel copyWith({
-    String? clientName,
-    String? siteName,
-    double? currentFillPercent,
-    String? state,
-    int? yearlyShots,
-  }) {
-    return MachineStateModel(
-      machineId: machineId,
-      code: code,
-      clientName: clientName ?? this.clientName,
-      siteName: siteName ?? this.siteName,
-      currentFillPercent: currentFillPercent ?? this.currentFillPercent,
-      state: state ?? this.state,
-      yearlyShots: yearlyShots ?? this.yearlyShots,
-    );
-  }
+class MachineHeaderModel {
+  final String machineId;
+  final String machineCode;
+  final String? siteName;
+  final String? clientName;
+
+  const MachineHeaderModel({
+    required this.machineId,
+    required this.machineCode,
+    required this.siteName,
+    required this.clientName,
+  });
 }
 
 class MachineDetailPage extends StatefulWidget {
@@ -95,77 +162,81 @@ class MachineDetailPage extends StatefulWidget {
 }
 
 class _MachineDetailPageState extends State<MachineDetailPage> {
-  MachineStateModel? _machine;
   bool _loading = true;
-  bool _refillLoading = false;
   String? _error;
+
+  MachineHeaderModel? _header;
+  final Map<ConsumableType, ConsumableState> _consumables = {};
+
+  ConsumableType? _refillLoadingType;
   String? _refillError;
 
   @override
   void initState() {
     super.initState();
-    _loadMachine();
+    _loadAll();
   }
 
-  Future<void> _loadMachine() async {
+  Future<void> _loadAll() async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
 
     setState(() {
       _loading = true;
       _error = null;
+      _refillError = null;
     });
 
     try {
       if (user == null) {
-        setState(() {
-          _error = 'Utente non autenticato.';
-          _loading = false;
-        });
-        return;
+        throw Exception('Utente non autenticato.');
       }
 
-      // Carica da view "effective" (rispetta assegnazioni temporanee)
-      final data = await supabase
-          .from('machine_effective_assignment')
+      final rows = await supabase
+          .from('machine_effective_consumables')
           .select(
-            'machine_id, machine_code, current_fill_percent, yearly_shots, site_name, client_name, effective_operator_id',
+            'machine_id, machine_code, site_name, client_name, effective_operator_id, consumable_type, capacity_units, current_units, is_enabled, updated_at',
           )
-          .eq('machine_id', widget.machineId)
-          .maybeSingle();
+          .eq('machine_id', widget.machineId);
 
-      if (data == null) {
-        setState(() {
-          _error = 'Macchina non trovata.';
-          _loading = false;
-        });
-        return;
+      final list = (rows as List).cast<Map<String, dynamic>>();
+      if (list.isEmpty) {
+        throw Exception('Macchina non trovata o nessun consumabile disponibile.');
       }
 
-      // Guardrail applicativo: l’operatore deve essere assegnatario effettivo
-      final effectiveOperatorId = data['effective_operator_id'] as String?;
+      // Guardrail: l’utente deve essere l’assegnatario effettivo
+      final effectiveOperatorId = list.first['effective_operator_id'] as String?;
       if (effectiveOperatorId != null && effectiveOperatorId != user.id) {
-        setState(() {
-          _error = 'Non sei assegnato a questa macchina.';
-          _loading = false;
-        });
-        return;
+        throw Exception('Non sei assegnato a questa macchina.');
       }
 
-      final base = MachineStateModel.fromEffectiveMap({
-        ...data,
-        'client_name': data['client_name'],
-        'site_name': data['site_name'],
-      });
+      final machineId = list.first['machine_id'] as String? ?? widget.machineId;
+      final machineCode = list.first['machine_code'] as String? ?? 'N/D';
+      final siteName = list.first['site_name'] as String?;
+      final clientName = list.first['client_name'] as String?;
+
+      final header = MachineHeaderModel(
+        machineId: machineId,
+        machineCode: machineCode,
+        siteName: siteName,
+        clientName: clientName,
+      );
+
+      final map = <ConsumableType, ConsumableState>{};
+      for (final r in list) {
+        try {
+          final cs = ConsumableState.fromMap(r);
+          map[cs.type] = cs;
+        } catch (_) {
+          // ignora consumabili sconosciuti per robustezza
+        }
+      }
 
       setState(() {
-        _machine = base.copyWith(
-          clientName: (data['client_name'] as String?) ?? base.clientName,
-          siteName: (data['site_name'] as String?) ?? base.siteName,
-          currentFillPercent:
-              (data['current_fill_percent'] as num?)?.toDouble() ?? base.currentFillPercent,
-          yearlyShots: data['yearly_shots'] as int?,
-        );
+        _header = header;
+        _consumables
+          ..clear()
+          ..addAll(map);
         _loading = false;
       });
     } catch (e) {
@@ -176,100 +247,93 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
     }
   }
 
-  Color _stateColor(String state) {
-    switch (state) {
-      case 'green':
-        return Colors.green;
-      case 'yellow':
-        return Colors.orange;
-      case 'red':
-        return Colors.red;
-      case 'black':
-        return Colors.black;
-      default:
-        return Colors.grey;
-    }
+  Color _colorForPercent(double percent) {
+    // Soglie semplici e leggibili
+    if (percent <= 10) return Colors.black;
+    if (percent <= 20) return Colors.red;
+    if (percent <= 40) return Colors.orange;
+    return Colors.green;
   }
 
-  String _stateLabel(String state) {
-    switch (state) {
-      case 'green':
-        return 'OK';
-      case 'yellow':
-        return 'Attenzione';
-      case 'red':
-        return 'Critico';
-      case 'black':
-        return 'Fermo';
-      default:
-        return 'Sconosciuto';
-    }
+  String _labelForPercent(double percent) {
+    if (percent <= 10) return 'Critico';
+    if (percent <= 20) return 'Basso';
+    if (percent <= 40) return 'Attenzione';
+    return 'OK';
   }
 
-  Future<void> _onRefillPressed() async {
+  Future<void> _refillOne(ConsumableType type) async {
     final supabase = Supabase.instance.client;
-    final user = supabase.auth.currentUser;
-    final machine = _machine;
-
-    if (user == null || machine == null) return;
+    final header = _header;
+    if (header == null) return;
 
     setState(() {
-      _refillLoading = true;
+      _refillLoadingType = type;
       _refillError = null;
     });
 
     try {
-      // Esegue refill in modo atomico lato DB (insert refills + update machines)
-      await supabase.rpc('perform_refill', params: {
-        'p_machine_id': machine.machineId,
+      await supabase.rpc('perform_refill_consumable', params: {
+        'p_machine_id': header.machineId,
+        'p_type': consumableTypeToDb(type),
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Refill registrato.')),
+          SnackBar(content: Text('Refill ${consumableLabel(type)} registrato.')),
         );
       }
 
-      await _loadMachine();
+      await _loadAll();
     } catch (e) {
       setState(() {
-        _refillError = 'Errore durante il refill: $e';
+        _refillError = 'Errore refill ${consumableLabel(type)}: $e';
       });
     } finally {
       if (mounted) {
         setState(() {
-          _refillLoading = false;
+          _refillLoadingType = null;
         });
       }
     }
   }
 
+  List<ConsumableType> _orderedTypes() {
+    // Ordine fisso e coerente con UX
+    return const [
+      ConsumableType.coffee,
+      ConsumableType.milk,
+      ConsumableType.powder,
+      ConsumableType.water,
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
-    final machine = _machine;
+    final header = _header;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(machine?.code ?? 'Macchina'),
+        title: Text(header?.machineCode ?? 'Macchina'),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!))
-              : machine == null
+              : header == null
                   ? const Center(child: Text('Macchina non trovata.'))
                   : RefreshIndicator(
-                      onRefresh: _loadMachine,
+                      onRefresh: _loadAll,
                       child: ListView(
                         padding: const EdgeInsets.all(16),
                         children: [
-                          _buildStateCard(machine),
+                          _buildInfoCard(header),
                           const SizedBox(height: 16),
-                          _buildInfoCard(machine),
-                          const SizedBox(height: 24),
+                          _buildConsumablesGrid(),
+                          const SizedBox(height: 16),
                           if (_refillError != null)
                             Padding(
-                              padding: const EdgeInsets.only(bottom: 8.0),
+                              padding: const EdgeInsets.only(top: 8),
                               child: Text(
                                 _refillError!,
                                 style: const TextStyle(
@@ -278,91 +342,14 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
                                 ),
                               ),
                             ),
-                          _buildRefillButton(),
+                          const SizedBox(height: 24),
                         ],
                       ),
                     ),
     );
   }
 
-  Widget _buildStateCard(MachineStateModel machine) {
-    final percent = machine.currentFillPercent.clamp(0, 100);
-    final color = _stateColor(machine.state);
-    final label = _stateLabel(machine.state);
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            const Text(
-              'Stato macchina',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: Colors.grey,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Center(
-              child: SizedBox(
-                width: 120,
-                height: 120,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    SizedBox(
-                      width: 120,
-                      height: 120,
-                      child: CircularProgressIndicator(
-                        value: percent / 100.0,
-                        strokeWidth: 10,
-                        backgroundColor: color.withValues(alpha: 0.12),
-                        valueColor: AlwaysStoppedAnimation<Color>(color),
-                      ),
-                    ),
-                    Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          '${percent.toStringAsFixed(0)}%',
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          label,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: color,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (machine.yearlyShots != null)
-              Text(
-                'Erogazioni anno: ${machine.yearlyShots}',
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey,
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildInfoCard(MachineStateModel machine) {
+  Widget _buildInfoCard(MachineHeaderModel header) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
@@ -377,13 +364,188 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
               ),
             ),
             const SizedBox(height: 12),
-            _infoRow('Cliente', machine.clientName.isEmpty ? '-' : machine.clientName),
-            if (machine.siteName != null) ...[
+            _infoRow('Cliente', (header.clientName ?? '').isEmpty ? '-' : header.clientName!),
+            if ((header.siteName ?? '').isNotEmpty) ...[
               const SizedBox(height: 4),
-              _infoRow('Sede', machine.siteName!),
+              _infoRow('Sede', header.siteName!),
             ],
             const SizedBox(height: 4),
-            _infoRow('Codice macchina', machine.code),
+            _infoRow('Codice macchina', header.machineCode),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildConsumablesGrid() {
+    final types = _orderedTypes();
+
+    // Se water è disabled/non presente, la card rimane nascosta
+    final items = <ConsumableType>[];
+    for (final t in types) {
+      final cs = _consumables[t];
+      if (cs == null) continue;
+      if (!cs.isEnabled) continue;
+      items.add(t);
+    }
+
+    if (items.isEmpty) {
+      return const Center(child: Text('Nessun consumabile configurato per questa macchina.'));
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // 2 colonne quasi sempre; se desktop molto largo, al massimo 4 in riga.
+        final w = constraints.maxWidth;
+        final crossAxisCount = w >= 900 ? 4 : (w >= 520 ? 2 : 2);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Serbatoi (dosi)',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            GridView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: items.length,
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                // card compatta e stabile su web/mobile
+                childAspectRatio: w >= 900 ? 1.2 : 1.05,
+              ),
+              itemBuilder: (context, index) {
+                final type = items[index];
+                final cs = _consumables[type]!;
+                return _buildConsumableCard(cs);
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildConsumableCard(ConsumableState cs) {
+    final percent = cs.percent;
+    final color = _colorForPercent(percent);
+    final label = _labelForPercent(percent);
+
+    final isLoadingThis = _refillLoadingType == cs.type;
+    final canRefill = cs.isEnabled && !cs.isConfigMissing && !cs.isFull && !isLoadingThis;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            // Titolo riga: icona + label
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(consumableIcon(cs.type), size: 18, color: Colors.grey),
+                const SizedBox(width: 8),
+                Text(
+                  consumableLabel(cs.type),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+
+            // Cerchio con %
+            SizedBox(
+              width: 92,
+              height: 92,
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  SizedBox(
+                    width: 92,
+                    height: 92,
+                    child: CircularProgressIndicator(
+                      value: percent / 100.0,
+                      strokeWidth: 9,
+                      backgroundColor: color.withValues(alpha: 0.12),
+                      valueColor: AlwaysStoppedAnimation<Color>(color),
+                    ),
+                  ),
+                  Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '${percent.toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: color,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            // Dosi
+            Text(
+              cs.isConfigMissing
+                  ? 'Capacità non impostata'
+                  : '${cs.currentUnits} / ${cs.capacityUnits} dosi',
+              style: TextStyle(
+                fontSize: 12,
+                color: cs.isConfigMissing ? Colors.red : Colors.grey,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+
+            const Spacer(),
+
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: canRefill ? () => _refillOne(cs.type) : null,
+                icon: isLoadingThis
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.refresh, size: 18),
+                label: Text(
+                  cs.isFull
+                      ? 'Pieno'
+                      : cs.isConfigMissing
+                          ? 'Configura'
+                          : 'Refill',
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -415,26 +577,6 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildRefillButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: _refillLoading ? null : _onRefillPressed,
-        icon: _refillLoading
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Colors.white,
-                ),
-              )
-            : const Icon(Icons.refresh),
-        label: Text(_refillLoading ? 'Refill in corso...' : 'Refill fatto'),
-      ),
     );
   }
 }

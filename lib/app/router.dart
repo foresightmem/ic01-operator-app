@@ -3,22 +3,22 @@
 ///
 /// Definisce tutte le route dell'app tramite GoRouter:
 /// - Login (/login)
-/// - Dashboard refill (/dashboard, /clients)
-/// - Dettaglio cliente (/clients/:clientId)
-/// - Dettaglio macchina (/machines/:machineId)
-/// - Manutenzioni straordinarie:
-///     - Lista ticket (/maintenance)
-///     - Dettaglio ticket (/maintenance/:ticketId)
+/// - Reset password (/reset-password)
+/// - Area operatori (con bottom nav via ShellRoute + MainShell):
+///     - Dashboard (/dashboard, /clients)
+///     - Dettaglio cliente (/clients/:clientId)
+///     - Dettaglio macchina (/machines/:machineId)
+///     - Manutenzioni straordinarie:
+///         - Lista ticket (/maintenance)
+///         - Dettaglio ticket (/maintenance/:ticketId)
+/// - Area admin (SENZA bottom nav):
+///     - Dashboard admin (/admin)
+///     - Clienti admin (/admin/clients, /admin/clients/:clientId)
+///     - Coverage (/admin/coverage, /admin/coverage/:unavailabilityId)
+///     - Config serbatoi (/admin/machine-config)
+///     - Attività (/admin/activities)
 ///
-/// Usa una ShellRoute con MainShell per avere la bottom nav fissa.
-///
-/// COSA TIPICAMENTE SI MODIFICA:
-/// - Aggiunta nuove pagine (nuove GoRoute).
-/// - Cambiare il redirect in base allo stato di login.
-///
-/// COSA È MEGLIO NON TOCCARE:
-/// - La logica di redirect login -> dashboard e viceversa.
-/// - La struttura della ShellRoute (altrimenti sparisce la bottom nav).
+/// Usa una ShellRoute con MainShell SOLO per l'area operatori.
 /// ===============================================================
 library;
 
@@ -26,10 +26,14 @@ library;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:ic01_operator_app/features/admin/presentation/admin_clients_overview_page.dart';
+
+import 'package:ic01_operator_app/features/admin/presentation/admin_activities_page.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_client_detail_page.dart';
+import 'package:ic01_operator_app/features/admin/presentation/admin_clients_overview_page.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_coverage_page.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_coverage_plan_page.dart';
+import 'package:ic01_operator_app/features/admin/presentation/admin_dashboard_page.dart';
+import 'package:ic01_operator_app/features/admin/presentation/admin_machine_config_page.dart';
 import 'package:ic01_operator_app/models/admin_event.dart';
 
 import '../features/auth/presentation/login_page.dart';
@@ -38,17 +42,10 @@ import '../features/dashboard/presentation/dashboard_page.dart';
 import '../features/clients/presentation/client_detail_page.dart';
 import '../features/machines/presentation/machine_detail_page.dart';
 import '../features/maintenance/presentation/maintenance_tickets_page.dart';
-import 'main_shell.dart';
 import '../features/maintenance/presentation/ticket_detail_page.dart';
-import '../features/admin/presentation/admin_dashboard_page.dart';
-import '../features/admin/presentation/admin_activities_page.dart';
-
-
+import 'main_shell.dart';
 
 /// Router principale dell'app IC-01.
-///
-/// Usa una ShellRoute con MainShell per avere una bottom nav fissa
-/// su dashboard, clienti e manutenzioni.
 final GoRouter appRouter = GoRouter(
   initialLocation: '/dashboard',
   redirect: (BuildContext context, GoRouterState state) {
@@ -69,13 +66,87 @@ final GoRouter appRouter = GoRouter(
     return null;
   },
   routes: <RouteBase>[
-    // Login fuori dalla shell
+    // =========================
+    // AUTH (fuori dalla shell)
+    // =========================
     GoRoute(
       path: '/login',
       builder: (context, state) => const LoginPage(),
     ),
+    GoRoute(
+      path: '/reset-password',
+      builder: (context, state) => const ResetPasswordPage(),
+    ),
 
-    // ShellRoute con bottom nav persistente
+    // =========================
+    // ADMIN (fuori dalla shell)
+    // =========================
+    GoRoute(
+      path: '/admin',
+      name: 'adminDashboard',
+      builder: (context, state) => const AdminDashboardPage(),
+    ),
+    GoRoute(
+      path: '/admin/clients',
+      builder: (context, state) => const AdminClientsOverviewPage(),
+    ),
+    GoRoute(
+      path: '/admin/clients/:clientId',
+      builder: (context, state) {
+        final clientId = state.pathParameters['clientId']!;
+        return AdminClientDetailPage(clientId: clientId);
+      },
+    ),
+    GoRoute(
+      path: '/admin/coverage',
+      builder: (context, state) => const AdminCoveragePage(),
+    ),
+    GoRoute(
+      path: '/admin/coverage/:unavailabilityId',
+      builder: (context, state) {
+        final id = state.pathParameters['unavailabilityId']!;
+        return AdminCoveragePlanPage(unavailabilityId: id);
+      },
+    ),
+    GoRoute(
+      path: '/admin/machine-config',
+      builder: (context, state) => const AdminMachineConfigPage(),
+    ),
+    GoRoute(
+      path: '/admin/activities',
+      builder: (context, state) {
+        final raw = state.extra;
+
+        if (raw == null) {
+          return const AdminActivitiesPage(events: <AdminEvent>[]);
+        }
+
+        if (raw is List) {
+          final converted = <AdminEvent>[];
+
+          for (final item in raw) {
+            final d = item as dynamic; // runtime: _AdminEvent
+            converted.add(
+              AdminEvent(
+                timestamp: d.timestamp as DateTime,
+                type: d.type as String,
+                title: d.title as String,
+                subtitle: d.subtitle as String,
+                icon: d.icon as IconData,
+              ),
+            );
+          }
+
+          return AdminActivitiesPage(events: converted);
+        }
+
+        return const AdminActivitiesPage(events: <AdminEvent>[]);
+      },
+    ),
+
+    // =========================
+    // SHELL OPERATORI
+    // =========================
     ShellRoute(
       builder: (context, state, child) {
         final location = state.uri.toString();
@@ -97,13 +168,11 @@ final GoRouter appRouter = GoRouter(
       routes: <RouteBase>[
         GoRoute(
           path: '/dashboard',
-          builder: (context, state) =>
-              const DashboardPage(initialTab: 0), // Oggi/Domani
+          builder: (context, state) => const DashboardPage(initialTab: 0),
         ),
         GoRoute(
           path: '/clients',
-          builder: (context, state) =>
-              const DashboardPage(initialTab: 1), // Tutti
+          builder: (context, state) => const DashboardPage(initialTab: 1),
         ),
         GoRoute(
           path: '/clients/:clientId',
@@ -134,72 +203,6 @@ final GoRouter appRouter = GoRouter(
             return TicketDetailPage(ticketId: id);
           },
         ),
-        GoRoute(
-          path: '/reset-password',
-          builder: (context, state) => const ResetPasswordPage(),
-        ),
-        GoRoute(
-          path: '/admin',
-          name: 'adminDashboard',
-          builder: (context, state) => const AdminDashboardPage(),
-        ),
-        GoRoute(
-          path: '/admin/clients',
-          builder: (context, state) => const AdminClientsOverviewPage(),
-        ),
-        GoRoute(
-          path: '/admin/clients/:clientId',
-          builder: (context, state) {
-            final clientId = state.pathParameters['clientId']!;
-            return AdminClientDetailPage(clientId: clientId);
-          },
-        ),
-        GoRoute(
-          path: '/admin/coverage',
-          builder: (context, state) => const AdminCoveragePage(),
-        ),
-        GoRoute(
-          path: '/admin/coverage/:unavailabilityId',
-          builder: (context, state) {
-            final id = state.pathParameters['unavailabilityId']!;
-            return AdminCoveragePlanPage(unavailabilityId: id);
-          },
-        ),
-
-        GoRoute(
-          path: '/admin/activities',
-          builder: (context, state) {
-            final raw = state.extra;
-            // Se non arriva nulla, mostra pagina vuota
-            if (raw == null) {
-              return const AdminActivitiesPage(events: <AdminEvent>[]);
-            }
-
-            // extra su web è spesso un JSArray: trattalo come List non tipizzata
-            if (raw is List) {
-              final converted = <AdminEvent>[];
-
-              for (final item in raw) {
-                final d = item as dynamic; // runtime: _AdminEvent
-                converted.add(
-                  AdminEvent(
-                    timestamp: d.timestamp as DateTime,
-                    type: d.type as String,
-                    title: d.title as String,
-                    subtitle: d.subtitle as String,
-                    icon: d.icon as IconData,
-                  ),
-                );
-              }
-
-              return AdminActivitiesPage(events: converted);
-            }
-
-            // qualsiasi altro caso
-            return const AdminActivitiesPage(events: <AdminEvent>[]);
-          },
-        ),
-          
       ],
     ),
   ],

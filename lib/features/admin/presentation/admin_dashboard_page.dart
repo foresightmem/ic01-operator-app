@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
 
+
+
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
 
@@ -491,6 +493,15 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                               icon: Icons.local_cafe,
                               onTap: () {
                                 context.go('/dashboard');
+                              },
+                            ),
+                            _AdminKpiCard(
+                              label: 'Gestione Macchine',
+                              value: 'Impostazioni contatori macchine',
+                              subtitle: 'Chiamare MAGMA per dubbi',
+                              icon: Icons.settings,
+                              onTap: () {
+                                context.go('/admin/machine-config');
                               },
                             ),
                             _AdminKpiCard(
