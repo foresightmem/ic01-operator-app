@@ -7,8 +7,8 @@
 /// - Permette tap su una macchina per aprire MachineDetailPage.
 ///
 /// NOTA:
-/// - Usa `machine_effective_assignment` per rispettare le assegnazioni temporanee.
-/// - Calcola lo stato (green/yellow/red/black) da current_fill_percent.
+/// - Usa `machine_effective_consumables` per rispettare le assegnazioni temporanee.
+/// - Calcola lo stato (green/yellow/red/black) dal livello minimo dei consumabili.
 /// ===============================================================
 library;
 
@@ -38,19 +38,23 @@ class ClientMachine {
     if (fill <= 20) return 'red';
     if (fill <= 40) return 'yellow';
     return 'green';
-    }
-
-  factory ClientMachine.fromEffectiveMap(Map<String, dynamic> map) {
-    final fill = (map['current_fill_percent'] as num?)?.toDouble() ?? 0.0;
-
-    return ClientMachine(
-      machineId: map['machine_id'] as String,
-      code: (map['machine_code'] as String?) ?? 'N/D',
-      siteName: (map['site_name'] as String?) ?? 'Sede',
-      currentFillPercent: fill,
-      state: _stateFromFill(fill),
-    );
   }
+}
+
+class _MachineAggregate {
+  final String machineId;
+  final String machineCode;
+  final String siteName;
+  double minPercent;
+  bool hasEnabledConsumable;
+
+  _MachineAggregate({
+    required this.machineId,
+    required this.machineCode,
+    required this.siteName,
+    required this.minPercent,
+    required this.hasEnabledConsumable,
+  });
 }
 
 /// Pagina di dettaglio cliente: mostra le macchine di quel cliente
@@ -77,7 +81,7 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
     _futureMachines = _loadMachines();
   }
 
-  /// Carica le macchine dalla view `machine_effective_assignment`.
+  /// Carica le macchine dalla view `machine_effective_consumables`.
   /// Filtri:
   ///   - client_id = widget.clientId
   ///   - effective_operator_id = utente corrente
@@ -87,13 +91,64 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
     if (user == null) return [];
 
     final data = await supabase
-        .from('machine_effective_assignment')
-        .select('machine_id, machine_code, current_fill_percent, site_name')
+        .from('machine_effective_consumables')
+        .select(
+          'machine_id, machine_code, site_name, client_id, consumable_type, capacity_units, current_units, is_enabled, effective_operator_id',
+        )
         .eq('client_id', widget.clientId)
         .eq('effective_operator_id', user.id);
 
     final rows = (data as List).cast<Map<String, dynamic>>();
-    return rows.map(ClientMachine.fromEffectiveMap).toList();
+    if (rows.isEmpty) {
+      return [];
+    }
+
+    final machines = <String, _MachineAggregate>{};
+    for (final row in rows) {
+      final machineId = row['machine_id'] as String?;
+      if (machineId == null) continue;
+
+      final machineCode = row['machine_code'] as String? ?? 'N/D';
+      final siteName = row['site_name'] as String? ?? 'Sede';
+      final enabled = (row['is_enabled'] as bool?) ?? true;
+      final capacity = (row['capacity_units'] as num?)?.toDouble() ?? 0.0;
+      final current = (row['current_units'] as num?)?.toDouble() ?? 0.0;
+
+      final aggregate = machines.putIfAbsent(
+        machineId,
+        () => _MachineAggregate(
+          machineId: machineId,
+          machineCode: machineCode,
+          siteName: siteName,
+          minPercent: 100,
+          hasEnabledConsumable: false,
+        ),
+      );
+
+      if (!enabled) {
+        continue;
+      }
+
+      aggregate.hasEnabledConsumable = true;
+      final percent = _percentFromUnits(current, capacity);
+      if (percent < aggregate.minPercent) {
+        aggregate.minPercent = percent;
+      }
+    }
+
+    final result = machines.values.map((machine) {
+      final percent = machine.hasEnabledConsumable ? machine.minPercent : 100.0;
+      return ClientMachine(
+        machineId: machine.machineId,
+        code: machine.machineCode,
+        siteName: machine.siteName,
+        currentFillPercent: percent,
+        state: ClientMachine._stateFromFill(percent),
+      );
+    }).toList();
+
+    result.sort((a, b) => a.code.compareTo(b.code));
+    return result;
   }
 
   Future<void> _refreshMachines() async {
@@ -130,6 +185,13 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
       default:
         return 'Sconosciuto';
     }
+  }
+
+  double _percentFromUnits(double current, double capacity) {
+    if (capacity <= 0) return 0;
+    final percent = (current / capacity) * 100;
+    if (percent.isNaN || percent.isInfinite) return 0;
+    return percent.clamp(0, 100);
   }
 
   @override

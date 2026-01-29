@@ -2,7 +2,7 @@
 /// FILE: features/dashboard/presentation/dashboard_page.dart
 ///
 /// Dashboard refill operator:
-/// - Mostra stato dei clienti assegnati usando la view client_states.
+/// - Mostra stato dei clienti assegnati aggregando i consumabili per macchina.
 /// - Gestisce due modalità:
 ///     - initialTab = 0: "Oggi/Domani"
 ///     - initialTab = 1: "Tutti i clienti"
@@ -21,7 +21,7 @@
 /// - Layout delle card cliente.
 ///
 /// COSA È MEGLIO NON TOCCARE:
-/// - La query base su client_states (mapping dei campi deve restare coerente).
+/// - La query base sui consumabili (mapping dei campi deve restare coerente).
 /// - La gestione di initialTab (usata dal router per /dashboard vs /clients).
 /// ===============================================================
 library;
@@ -35,7 +35,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// DashboardPage
 ///
 /// Dashboard refill operator:
-/// - Mostra lo stato dei clienti assegnati usando la view `client_states`.
+/// - Mostra lo stato dei clienti assegnati aggregando `machine_effective_consumables`.
 /// - Due modalità:
 ///     - initialTab = 0: "Oggi/Domani"
 ///     - initialTab = 1: "Tutti i clienti"
@@ -71,6 +71,38 @@ class ClientState {
       machinesToRefill: map['machines_to_refill'] as int,
     );
   }
+}
+
+class _MachineAggregate {
+  final String machineId;
+  final String clientId;
+  final String clientName;
+  double minPercent;
+  bool hasEnabledConsumable;
+
+  _MachineAggregate({
+    required this.machineId,
+    required this.clientId,
+    required this.clientName,
+    required this.minPercent,
+    required this.hasEnabledConsumable,
+  });
+}
+
+class _ClientAggregate {
+  final String clientId;
+  String name;
+  int totalMachines;
+  int machinesToRefill;
+  String worstState;
+
+  _ClientAggregate({
+    required this.clientId,
+    required this.name,
+    required this.totalMachines,
+    required this.machinesToRefill,
+    required this.worstState,
+  });
 }
 
 class DashboardPage extends StatefulWidget {
@@ -114,14 +146,91 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     final data = await supabase
-        .from('client_states_effective')
-        .select()
-        .eq('assigned_operator_id', user.id) // 👈 filtro per operatore corrente
-        .order('name', ascending: true);
+        .from('machine_effective_consumables')
+        .select(
+          'machine_id, machine_code, client_id, client_name, effective_operator_id, consumable_type, capacity_units, current_units, is_enabled',
+        )
+        .eq('effective_operator_id', user.id);
 
-    return (data as List<dynamic>)
-        .map((row) => ClientState.fromMap(row as Map<String, dynamic>))
+    final rows = (data as List).cast<Map<String, dynamic>>();
+    if (rows.isEmpty) {
+      return [];
+    }
+
+    final machines = <String, _MachineAggregate>{};
+    for (final row in rows) {
+      final machineId = row['machine_id'] as String?;
+      final clientId = row['client_id'] as String?;
+      if (machineId == null || clientId == null) {
+        continue;
+      }
+
+      final clientName = row['client_name'] as String? ?? 'Cliente';
+      final enabled = (row['is_enabled'] as bool?) ?? true;
+      final capacity = (row['capacity_units'] as num?)?.toDouble() ?? 0.0;
+      final current = (row['current_units'] as num?)?.toDouble() ?? 0.0;
+
+      final aggregate = machines.putIfAbsent(
+        machineId,
+        () => _MachineAggregate(
+          machineId: machineId,
+          clientId: clientId,
+          clientName: clientName,
+          minPercent: 100,
+          hasEnabledConsumable: false,
+        ),
+      );
+
+      if (!enabled) {
+        continue;
+      }
+
+      final percent = _percentFromUnits(current, capacity);
+      aggregate.hasEnabledConsumable = true;
+      if (percent < aggregate.minPercent) {
+        aggregate.minPercent = percent;
+      }
+    }
+
+    final clients = <String, _ClientAggregate>{};
+    for (final machine in machines.values) {
+      final percent = machine.hasEnabledConsumable ? machine.minPercent : 100.0;
+      final state = _stateFromPercent(percent);
+      final client = clients.putIfAbsent(
+        machine.clientId,
+        () => _ClientAggregate(
+          clientId: machine.clientId,
+          name: machine.clientName,
+          totalMachines: 0,
+          machinesToRefill: 0,
+          worstState: 'green',
+        ),
+      );
+
+      client.totalMachines += 1;
+      client.name = machine.clientName;
+      if (_severity(state) > _severity(client.worstState)) {
+        client.worstState = state;
+      }
+      if (percent <= 40) {
+        client.machinesToRefill += 1;
+      }
+    }
+
+    final result = clients.values
+        .map(
+          (client) => ClientState(
+            clientId: client.clientId,
+            name: client.name,
+            worstState: client.worstState,
+            totalMachines: client.totalMachines,
+            machinesToRefill: client.machinesToRefill,
+          ),
+        )
         .toList();
+
+    result.sort((a, b) => a.name.compareTo(b.name));
+    return result;
   }
 
   Future<void> _loadUserRole() async {
@@ -209,6 +318,20 @@ class _DashboardPageState extends State<DashboardPage> {
       default:
         return 0;
     }
+  }
+
+  double _percentFromUnits(double current, double capacity) {
+    if (capacity <= 0) return 0;
+    final percent = (current / capacity) * 100;
+    if (percent.isNaN || percent.isInfinite) return 0;
+    return percent.clamp(0, 100);
+  }
+
+  String _stateFromPercent(double percent) {
+    if (percent <= 10) return 'black';
+    if (percent <= 20) return 'red';
+    if (percent <= 40) return 'yellow';
+    return 'green';
   }
 
   /// Divide i clienti tra "oggi" e "domani" seguendo la logica:
