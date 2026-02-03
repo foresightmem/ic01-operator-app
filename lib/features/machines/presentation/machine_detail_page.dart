@@ -105,9 +105,9 @@ class ConsumableState {
   bool get isConfigMissing => isEnabled && capacityUnits <= 0;
 
   factory ConsumableState.fromMap(Map<String, dynamic> map) {
-    final t = consumableTypeFromDb(map['consumable_type'] as String? ?? '');
+    final t = consumableTypeFromDb(map['type'] as String? ?? '');
     if (t == null) {
-      throw Exception('Consumable type sconosciuto: ${map['consumable_type']}');
+      throw Exception('Consumable type sconosciuto: ${map['type']}');
     }
 
     final cap = (map['capacity_units'] as num?)?.toInt() ?? 0;
@@ -195,7 +195,7 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
       final rows = await supabase
           .from('machine_effective_consumables')
           .select(
-            'machine_id, machine_code, site_name, client_name, effective_operator_id, consumable_type, capacity_units, current_units, is_enabled, updated_at',
+            'machine_id, machine_code, site_name, client_name, effective_operator_id, type, capacity_units, current_units',
           )
           .eq('machine_id', widget.machineId);
 
