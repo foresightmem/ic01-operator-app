@@ -63,12 +63,21 @@ class ClientState {
   });
 
   factory ClientState.fromMap(Map<String, dynamic> map) {
+    String _stringOrEmpty(dynamic value) => value == null ? '' : value.toString();
+    int _intOrZero(dynamic value) {
+      if (value is int) return value;
+      if (value is num) return value.toInt();
+      return int.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
     return ClientState(
-      clientId: map['client_id'] as String,
-      name: map['name'] as String,
-      worstState: map['worst_state'] as String,
-      totalMachines: map['total_machines'] as int,
-      machinesToRefill: map['machines_to_refill'] as int,
+      clientId: _stringOrEmpty(map['client_id']),
+      name: _stringOrEmpty(map['name']),
+      worstState: _stringOrEmpty(map['worst_state']).isEmpty
+          ? 'unknown'
+          : _stringOrEmpty(map['worst_state']),
+      totalMachines: _intOrZero(map['total_machines']),
+      machinesToRefill: _intOrZero(map['machines_to_refill']),
     );
   }
 }
