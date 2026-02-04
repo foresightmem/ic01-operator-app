@@ -173,6 +173,8 @@ class _AdminCoveragePageState extends State<AdminCoveragePage> {
         .eq('status', 'suggested');
 
     // macchine dell'assente + city
+    // TODO: Consider also machines temporarily assigned to the absent operator
+    // via confirmed temp_machine_assignments for the selected period.
     final machinesRows = await supabase
         .from('machines')
         .select('id, site_id')
@@ -191,7 +193,7 @@ class _AdminCoveragePageState extends State<AdminCoveragePage> {
 
     final sitesRows = await supabase
         .from('sites')
-        .select('id, city')
+        .select('id, city, client_id')
         .inFilter('id', siteIds);
 
     final Map<String, String> siteIdToCity = {
@@ -201,12 +203,21 @@ class _AdminCoveragePageState extends State<AdminCoveragePage> {
             : 'Senza città',
     };
 
-    // macchine raggruppate per city
-    final Map<String, List<String>> machineIdsByCity = {};
+    final Map<String, String> siteIdToClientId = {
+      for (final s in (sitesRows).cast<Map<String, dynamic>>())
+        s['id'] as String: (s['client_id'] as String?) ?? 'unknown-client',
+    };
+
+    // macchine raggruppate per city -> client
+    final Map<String, Map<String, List<String>>> machineIdsByCityClient = {};
     for (final m in machines) {
       final siteId = m['site_id'] as String;
       final city = siteIdToCity[siteId] ?? 'Senza città';
-      machineIdsByCity.putIfAbsent(city, () => []).add(m['id'] as String);
+      final clientId = siteIdToClientId[siteId] ?? 'unknown-client';
+      machineIdsByCityClient.putIfAbsent(city, () => {});
+      machineIdsByCityClient[city]!
+          .putIfAbsent(clientId, () => [])
+          .add(m['id'] as String);
     }
 
     // candidati: tutti gli operatori refill tranne l'assente
@@ -270,14 +281,19 @@ class _AdminCoveragePageState extends State<AdminCoveragePage> {
 
     final inserts = <Map<String, dynamic>>[];
 
-    for (final entry in machineIdsByCity.entries) {
+    for (final entry in machineIdsByCityClient.entries) {
       final city = entry.key;
-      final machineIds = entry.value;
+      final clientsToMachines = entry.value;
 
       // se non ho load per quella city, inizializzo a 0 per tutti
       load.putIfAbsent(city, () => {});
 
-      for (final machineId in machineIds) {
+      final clientGroups = clientsToMachines.entries.toList()
+        ..sort((a, b) => b.value.length.compareTo(a.value.length));
+
+      for (final clientEntry in clientGroups) {
+        final machineIds = clientEntry.value;
+
         // scegli candidato con load minimo in quella city
         String chosen = candidates.first;
         int chosenLoad = load[city]![chosen] ?? 0;
@@ -290,17 +306,20 @@ class _AdminCoveragePageState extends State<AdminCoveragePage> {
           }
         }
 
-        inserts.add({
-          'machine_id': machineId,
-          'original_operator_id': absentOperatorId,
-          'new_operator_id': chosen,
-          'start_date': start,
-          'end_date': end,
-          'status': 'suggested',
-        });
+        for (final machineId in machineIds) {
+          inserts.add({
+            'machine_id': machineId,
+            'original_operator_id': absentOperatorId,
+            'new_operator_id': chosen,
+            'start_date': start,
+            'end_date': end,
+            'status': 'suggested',
+          });
+        }
 
         // aggiorna load
-        load[city]![chosen] = (load[city]![chosen] ?? 0) + 1;
+        load[city]![chosen] =
+            (load[city]![chosen] ?? 0) + machineIds.length;
       }
     }
 
@@ -453,7 +472,7 @@ class _AdminCoveragePageState extends State<AdminCoveragePage> {
                         ),
                         const SizedBox(height: 12),
                         const Text(
-                          'Nota: v1 distribuisce le macchine dell’assente sugli altri refill_operator bilanciando per città (approssimazione).',
+                          'Nota: v2 distribuisce per cliente (azienda) all’interno di ogni città, bilanciando il carico per città.',
                           style: TextStyle(fontSize: 12, color: Colors.grey),
                         ),
                       ],

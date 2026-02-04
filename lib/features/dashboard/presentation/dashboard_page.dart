@@ -69,13 +69,30 @@ class ClientState {
       if (value is num) return value.toInt();
       return int.tryParse(value?.toString() ?? '') ?? 0;
     }
+    String _stateFromRank(int rank) {
+      switch (rank) {
+        case 4:
+          return 'black';
+        case 3:
+          return 'red';
+        case 2:
+          return 'yellow';
+        case 1:
+          return 'green';
+        default:
+          return '';
+      }
+    }
+
+    final rawWorstState = _stringOrEmpty(map['worst_state']);
+    final worstStateRank = _intOrZero(map['worst_state_rank']);
+    final computedWorstState =
+        rawWorstState.isNotEmpty ? rawWorstState : _stateFromRank(worstStateRank);
 
     return ClientState(
       clientId: _stringOrEmpty(map['client_id']),
       name: _stringOrEmpty(map['name']),
-      worstState: _stringOrEmpty(map['worst_state']).isEmpty
-          ? 'unknown'
-          : _stringOrEmpty(map['worst_state']),
+      worstState: computedWorstState.isEmpty ? 'unknown' : computedWorstState,
       totalMachines: _intOrZero(map['total_machines']),
       machinesToRefill: _intOrZero(map['machines_to_refill']),
     );

@@ -112,7 +112,7 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
       if (machineIds.isNotEmpty) {
         final machineRows = await supabase
             .from('machines')
-            .select('id, code, site_id, sites(name, city, clients(name))')
+            .select('id, code, site_id, sites(name, city, client_id, clients(name))')
             .inFilter('id', machineIds);
 
         for (final r in (machineRows as List).cast<Map<String, dynamic>>()) {
@@ -192,6 +192,103 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
     }
   }
 
+  List<Widget> _buildGroupedRows(
+    BuildContext context,
+    List<_AssignmentRow> rows,
+    List<_ProfileItem> operators,
+    String absentOperatorId,
+  ) {
+    final Map<String, List<_AssignmentRow>> groups = {};
+    for (final r in rows) {
+      final clientName = r.machineInfo?.clientName?.trim();
+      final key = (clientName == null || clientName.isEmpty)
+          ? 'Cliente non disponibile'
+          : clientName;
+      groups.putIfAbsent(key, () => []).add(r);
+    }
+
+    final sortedKeys = groups.keys.toList()..sort();
+
+    final widgets = <Widget>[];
+
+    for (final key in sortedKeys) {
+      final groupRows = groups[key]!;
+      groupRows.sort((a, b) {
+        final aCode = a.machineInfo?.code ?? '';
+        final bCode = b.machineInfo?.code ?? '';
+        return aCode.compareTo(bCode);
+      });
+
+      widgets.add(
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          color: Colors.grey.shade100,
+          child: Text(
+            key,
+            style: const TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
+            ),
+          ),
+        ),
+      );
+
+      for (var i = 0; i < groupRows.length; i++) {
+        final r = groupRows[i];
+        final info = r.machineInfo;
+
+        widgets.add(
+          ListTile(
+            title: Text(
+              info == null ? 'Macchina' : 'Macchina ${info.code}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            subtitle: info == null
+                ? const Text('Cliente: N/D')
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Sito: ${info.siteName ?? 'N/D'}'),
+                      Text('Città: ${info.city ?? 'N/D'}'),
+                    ],
+                  ),
+            trailing: SizedBox(
+              width: 260,
+              child: DropdownButtonFormField<String>(
+                initialValue: r.newOperatorId,
+                decoration: const InputDecoration(
+                  labelText: 'Assegna a',
+                  isDense: true,
+                ),
+                items: operators
+                    .where((o) => o.id != absentOperatorId)
+                    .map(
+                      (o) => DropdownMenuItem(
+                        value: o.id,
+                        child: Text(o.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  _updateRowOperator(r, value);
+                },
+              ),
+            ),
+          ),
+        );
+
+        final isLastInGroup = i == groupRows.length - 1;
+        if (!isLastInGroup) {
+          widgets.add(const Divider(height: 1));
+        }
+      }
+    }
+
+    return widgets;
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<bool>(
@@ -265,60 +362,13 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(16),
                                 ),
-                                child: ListView.separated(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: _rows.length,
-                                  separatorBuilder: (_, __) =>
-                                      const Divider(height: 1),
-                                  itemBuilder: (context, i) {
-                                    final r = _rows[i];
-                                    final info = r.machineInfo;
-
-                                    return ListTile(
-                                      title: Text(
-                                        info == null
-                                            ? 'Macchina'
-                                            : 'Macchina ${info.code}',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      subtitle: Text(
-                                        [
-                                          if (info?.clientName != null)
-                                            info!.clientName!,
-                                          if (info?.siteName != null)
-                                            info!.siteName!,
-                                          if (info?.city != null) info!.city!,
-                                        ].join(' • '),
-                                      ),
-                                      trailing: SizedBox(
-                                        width: 260,
-                                        child: DropdownButtonFormField<String>(
-                                          initialValue: r.newOperatorId,
-                                          decoration: const InputDecoration(
-                                            labelText: 'Assegna a',
-                                            isDense: true,
-                                          ),
-                                          items: _operators
-                                              .where((o) =>
-                                                  o.id != _absence!.operatorId)
-                                              .map(
-                                                (o) => DropdownMenuItem(
-                                                  value: o.id,
-                                                  child: Text(o.name),
-                                                ),
-                                              )
-                                              .toList(),
-                                          onChanged: (value) {
-                                            if (value == null) return;
-                                            _updateRowOperator(r, value);
-                                          },
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                child: Column(
+                                  children: _buildGroupedRows(
+                                    context,
+                                    _rows,
+                                    _operators,
+                                    _absence!.operatorId,
+                                  ),
                                 ),
                               ),
                             const SizedBox(height: 16),
