@@ -37,14 +37,6 @@ async function hmacHex(secret: string, message: string): Promise<string> {
     .join("");
 }
 
-type BeverageCounts = {
-  coffee?: number;
-  cappuccino?: number;
-  powders?: number;
-  idle?: number;
-  unknown?: number;
-};
-
 type RecipeRow = {
   beverage: string;
   consumable: string;
@@ -104,7 +96,7 @@ serve(async (req) => {
       return new Response("Invalid signature", { status: 401 });
     }
 
-    let payload: { counts?: BeverageCounts } = {};
+    let payload: { counts?: Record<string, number> } = {};
     try {
       payload = JSON.parse(rawBody);
     } catch (_err) {
@@ -112,16 +104,19 @@ serve(async (req) => {
     }
 
     const counts = payload.counts ?? {};
-    const beverageCounts: Record<string, number> = {
-      coffee: Number(counts.coffee) || 0,
-      cappuccino: Number(counts.cappuccino) || 0,
-      powder_drink: Number(counts.powders) || 0,
-    };
+    const beverageCounts: Record<string, number> = {};
+    for (const [key, value] of Object.entries(counts)) {
+      beverageCounts[key] = Number(value) || 0;
+    }
+    // Backward compatibility: "powders" -> "powder_drink"
+    if (beverageCounts.powders && !beverageCounts.powder_drink) {
+      beverageCounts.powder_drink = beverageCounts.powders;
+    }
 
-    const totalEvents =
-      beverageCounts.coffee +
-      beverageCounts.cappuccino +
-      beverageCounts.powder_drink;
+    const totalEvents = Object.values(beverageCounts).reduce(
+      (sum, v) => sum + v,
+      0,
+    );
     if (totalEvents <= 0) {
       return new Response(JSON.stringify({ ok: true, applied: 0 }), {
         headers: { "content-type": "application/json" },
