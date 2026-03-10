@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/services/push_notifications_service.dart';
+
 /// ===============================================================
 /// LoginPage
 ///
@@ -94,6 +96,8 @@ class _LoginPageState extends State<LoginPage> {
        else {
         context.go('/dashboard');
       }
+
+      await PushNotificationsService.instance.syncTokenForCurrentUser();
     } catch (e) {
       setState(() {
         _errorMessage = 'Errore di accesso: $e';

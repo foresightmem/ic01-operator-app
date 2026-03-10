@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "99882472469",
+    "project_id": "ic-01-operator-app",
+    "storage_bucket": "ic-01-operator-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:99882472469:android:7e87b17e5f5f9eb22faa1c",
+        "android_client_info": {
+          "package_name": "com.example.ic01_operator_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAD55dzPAT9k3FQftDsH1bPQfea4Wf73T4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
