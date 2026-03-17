@@ -13,6 +13,8 @@ import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
@@ -24,29 +26,81 @@ class PushNotificationsService {
   static final PushNotificationsService instance = PushNotificationsService._();
 
   FirebaseMessaging? _messaging;
+  final FlutterLocalNotificationsPlugin _localNotifications =
+      FlutterLocalNotificationsPlugin();
   final Uuid _uuid = const Uuid();
 
   bool _initialized = false;
   String? _deviceId;
   String? _lastToken;
+  SharedPreferences? _prefs;
+
+  static const AndroidNotificationChannel _androidChannel =
+      AndroidNotificationChannel(
+    'ic01_push_default',
+    'Notifiche',
+    description: 'Notifiche push dell’app',
+    importance: Importance.high,
+  );
 
   Future<void> init() async {
     if (_initialized) return;
 
     await Firebase.initializeApp();
     _messaging ??= FirebaseMessaging.instance;
+    _prefs ??= await SharedPreferences.getInstance();
+    await _initLocalNotifications();
     await _requestPermissions();
-    _deviceId ??= _uuid.v4();
+    await _messaging?.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    _deviceId ??= _prefs?.getString('push_device_id');
+    if (_deviceId == null) {
+      _deviceId = _uuid.v4();
+      await _prefs?.setString('push_device_id', _deviceId!);
+    }
 
     final token = await _messaging?.getToken();
     _lastToken = token;
+    // Debug utile per verificare token/device.
+    print('[FCM] token: $token');
+    print('[FCM] deviceId: $_deviceId');
     if (token != null) {
       await _upsertToken(token);
     }
 
     _messaging?.onTokenRefresh.listen((newToken) async {
       _lastToken = newToken;
+      print('[FCM] token refresh: $newToken');
       await _upsertToken(newToken);
+    });
+
+    FirebaseMessaging.onMessage.listen((message) {
+      final notification = message.notification;
+      final title =
+          notification?.title ?? (message.data['title'] as String?);
+      final body = notification?.body ?? (message.data['body'] as String?);
+      if (title == null && body == null) return;
+
+      _localNotifications.show(
+        message.hashCode,
+        title,
+        body,
+        NotificationDetails(
+          android: AndroidNotificationDetails(
+            _androidChannel.id,
+            _androidChannel.name,
+            channelDescription: _androidChannel.description,
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: notification?.android?.smallIcon ?? 'ic_launcher',
+          ),
+          iOS: const DarwinNotificationDetails(),
+        ),
+        payload: message.data['route'] as String? ?? '/dashboard',
+      );
     });
 
     FirebaseMessaging.onMessageOpenedApp.listen((message) {
@@ -78,6 +132,28 @@ class PushNotificationsService {
       badge: true,
       sound: true,
     );
+  }
+
+  Future<void> _initLocalNotifications() async {
+    const androidInit = AndroidInitializationSettings('ic_launcher');
+    const iosInit = DarwinInitializationSettings();
+    const initSettings =
+        InitializationSettings(android: androidInit, iOS: iosInit);
+
+    await _localNotifications.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: (response) {
+        final route = response.payload ?? '/dashboard';
+        appRouter.go(route);
+      },
+    );
+
+    if (Platform.isAndroid) {
+      final androidPlugin = _localNotifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>();
+      await androidPlugin?.createNotificationChannel(_androidChannel);
+    }
   }
 
   Future<void> _upsertToken(String token) async {
