@@ -23,7 +23,7 @@ class PushNotificationsService {
 
   static final PushNotificationsService instance = PushNotificationsService._();
 
-  final FirebaseMessaging _messaging = FirebaseMessaging.instance;
+  FirebaseMessaging? _messaging;
   final Uuid _uuid = const Uuid();
 
   bool _initialized = false;
@@ -34,16 +34,17 @@ class PushNotificationsService {
     if (_initialized) return;
 
     await Firebase.initializeApp();
+    _messaging ??= FirebaseMessaging.instance;
     await _requestPermissions();
     _deviceId ??= _uuid.v4();
 
-    final token = await _messaging.getToken();
+    final token = await _messaging?.getToken();
     _lastToken = token;
     if (token != null) {
       await _upsertToken(token);
     }
 
-    _messaging.onTokenRefresh.listen((newToken) async {
+    _messaging?.onTokenRefresh.listen((newToken) async {
       _lastToken = newToken;
       await _upsertToken(newToken);
     });
@@ -53,7 +54,7 @@ class PushNotificationsService {
       appRouter.go(route);
     });
 
-    final initialMessage = await _messaging.getInitialMessage();
+    final initialMessage = await _messaging?.getInitialMessage();
     if (initialMessage != null) {
       final route = initialMessage.data['route'] as String? ?? '/dashboard';
       appRouter.go(route);
@@ -64,7 +65,7 @@ class PushNotificationsService {
 
   Future<void> syncTokenForCurrentUser() async {
     await init();
-    final token = _lastToken ?? await _messaging.getToken();
+    final token = _lastToken ?? await _messaging?.getToken();
     if (token != null) {
       _lastToken = token;
       await _upsertToken(token);
@@ -72,7 +73,7 @@ class PushNotificationsService {
   }
 
   Future<void> _requestPermissions() async {
-    await _messaging.requestPermission(
+    await _messaging?.requestPermission(
       alert: true,
       badge: true,
       sound: true,
