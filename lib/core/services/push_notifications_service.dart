@@ -9,11 +9,10 @@
 /// ===============================================================
 library;
 
-import 'dart:io';
-
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
@@ -45,6 +44,11 @@ class PushNotificationsService {
 
   Future<void> init() async {
     if (_initialized) return;
+    if (kIsWeb) {
+      // Firebase Messaging + local notifications are not configured for web here.
+      _initialized = true;
+      return;
+    }
 
     await Firebase.initializeApp();
     _messaging ??= FirebaseMessaging.instance;
@@ -118,6 +122,7 @@ class PushNotificationsService {
   }
 
   Future<void> syncTokenForCurrentUser() async {
+    if (kIsWeb) return;
     await init();
     final token = _lastToken ?? await _messaging?.getToken();
     if (token != null) {
@@ -148,7 +153,7 @@ class PushNotificationsService {
       },
     );
 
-    if (Platform.isAndroid) {
+    if (defaultTargetPlatform == TargetPlatform.android) {
       final androidPlugin = _localNotifications
           .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin>();
@@ -160,7 +165,8 @@ class PushNotificationsService {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
 
-    final platform = Platform.isAndroid ? 'android' : 'ios';
+    final platform =
+        defaultTargetPlatform == TargetPlatform.android ? 'android' : 'ios';
 
     await Supabase.instance.client.from('push_tokens').upsert(
       {
