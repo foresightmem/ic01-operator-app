@@ -15,17 +15,21 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///     current_units  (rimanente)
 ///     is_enabled
 ///
-/// - Mostra una griglia 2x2 di mini-cerchi (coffee/milk/powder/water).
-/// - Per ogni consumabile abilitat0, mostra bottone singolo "Refill"
+/// - Mostra il solo fattore monitorato per il tipo macchina (hot/cold).
+/// - Per il fattore abilitato, mostra bottone singolo "Refill"
 ///   che chiama RPC:
 ///     perform_refill_consumable(p_machine_id, p_type)
 ///   (reset current_units = capacity_units in modo atomico lato DB)
 /// ===============================================================
 
-enum ConsumableType { coffee, milk, powder, water }
+enum ConsumableType { hot, cold, coffee, milk, powder, water }
 
 ConsumableType? consumableTypeFromDb(String s) {
   switch (s) {
+    case 'hot':
+      return ConsumableType.hot;
+    case 'cold':
+      return ConsumableType.cold;
     case 'coffee':
       return ConsumableType.coffee;
     case 'milk':
@@ -41,6 +45,10 @@ ConsumableType? consumableTypeFromDb(String s) {
 
 String consumableTypeToDb(ConsumableType t) {
   switch (t) {
+    case ConsumableType.hot:
+      return 'hot';
+    case ConsumableType.cold:
+      return 'cold';
     case ConsumableType.coffee:
       return 'coffee';
     case ConsumableType.milk:
@@ -54,6 +62,10 @@ String consumableTypeToDb(ConsumableType t) {
 
 String consumableLabel(ConsumableType t) {
   switch (t) {
+    case ConsumableType.hot:
+      return 'Caldo';
+    case ConsumableType.cold:
+      return 'Freddo';
     case ConsumableType.coffee:
       return 'Caffè';
     case ConsumableType.milk:
@@ -67,6 +79,10 @@ String consumableLabel(ConsumableType t) {
 
 IconData consumableIcon(ConsumableType t) {
   switch (t) {
+    case ConsumableType.hot:
+      return Icons.local_fire_department;
+    case ConsumableType.cold:
+      return Icons.ac_unit;
     case ConsumableType.coffee:
       return Icons.coffee;
     case ConsumableType.milk:
@@ -101,7 +117,8 @@ class ConsumableState {
     return p.clamp(0, 100);
   }
 
-  bool get isFull => isEnabled && capacityUnits > 0 && currentUnits >= capacityUnits;
+  bool get isFull =>
+      isEnabled && capacityUnits > 0 && currentUnits >= capacityUnits;
   bool get isConfigMissing => isEnabled && capacityUnits <= 0;
 
   factory ConsumableState.fromMap(Map<String, dynamic> map) {
@@ -152,10 +169,7 @@ class MachineHeaderModel {
 class MachineDetailPage extends StatefulWidget {
   final String machineId;
 
-  const MachineDetailPage({
-    super.key,
-    required this.machineId,
-  });
+  const MachineDetailPage({super.key, required this.machineId});
 
   @override
   State<MachineDetailPage> createState() => _MachineDetailPageState();
@@ -201,11 +215,14 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
 
       final list = (rows as List).cast<Map<String, dynamic>>();
       if (list.isEmpty) {
-        throw Exception('Macchina non trovata o nessun consumabile disponibile.');
+        throw Exception(
+          'Macchina non trovata o nessun consumabile disponibile.',
+        );
       }
 
       // Guardrail: l’utente deve essere l’assegnatario effettivo
-      final effectiveOperatorId = list.first['effective_operator_id'] as String?;
+      final effectiveOperatorId =
+          list.first['effective_operator_id'] as String?;
       if (effectiveOperatorId != null && effectiveOperatorId != user.id) {
         throw Exception('Non sei assegnato a questa macchina.');
       }
@@ -273,14 +290,19 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
     });
 
     try {
-      await supabase.rpc('perform_refill_consumable', params: {
-        'p_machine_id': header.machineId,
-        'p_type': consumableTypeToDb(type),
-      });
+      await supabase.rpc(
+        'perform_refill_consumable',
+        params: {
+          'p_machine_id': header.machineId,
+          'p_type': consumableTypeToDb(type),
+        },
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Refill ${consumableLabel(type)} registrato.')),
+          SnackBar(
+            content: Text('Refill ${consumableLabel(type)} registrato.'),
+          ),
         );
       }
 
@@ -301,6 +323,8 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
   List<ConsumableType> _orderedTypes() {
     // Ordine fisso e coerente con UX
     return const [
+      ConsumableType.hot,
+      ConsumableType.cold,
       ConsumableType.coffee,
       ConsumableType.milk,
       ConsumableType.powder,
@@ -313,39 +337,34 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
     final header = _header;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(header?.machineCode ?? 'Macchina'),
-      ),
+      appBar: AppBar(title: Text(header?.machineCode ?? 'Macchina')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!))
-              : header == null
-                  ? const Center(child: Text('Macchina non trovata.'))
-                  : RefreshIndicator(
-                      onRefresh: _loadAll,
-                      child: ListView(
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          _buildInfoCard(header),
-                          const SizedBox(height: 16),
-                          _buildConsumablesGrid(),
-                          const SizedBox(height: 16),
-                          if (_refillError != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                _refillError!,
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          const SizedBox(height: 24),
-                        ],
+          ? Center(child: Text(_error!))
+          : header == null
+          ? const Center(child: Text('Macchina non trovata.'))
+          : RefreshIndicator(
+              onRefresh: _loadAll,
+              child: ListView(
+                padding: const EdgeInsets.all(16),
+                children: [
+                  _buildInfoCard(header),
+                  const SizedBox(height: 16),
+                  _buildConsumablesGrid(),
+                  const SizedBox(height: 16),
+                  if (_refillError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        _refillError!,
+                        style: const TextStyle(color: Colors.red, fontSize: 13),
                       ),
                     ),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
     );
   }
 
@@ -358,13 +377,13 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
           children: [
             const Text(
               'Informazioni macchina',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
-            _infoRow('Cliente', (header.clientName ?? '').isEmpty ? '-' : header.clientName!),
+            _infoRow(
+              'Cliente',
+              (header.clientName ?? '').isEmpty ? '-' : header.clientName!,
+            ),
             if ((header.siteName ?? '').isNotEmpty) ...[
               const SizedBox(height: 4),
               _infoRow('Sede', header.siteName!),
@@ -380,7 +399,6 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
   Widget _buildConsumablesGrid() {
     final types = _orderedTypes();
 
-    // Se water è disabled/non presente, la card rimane nascosta
     final items = <ConsumableType>[];
     for (final t in types) {
       final cs = _consumables[t];
@@ -390,7 +408,9 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
     }
 
     if (items.isEmpty) {
-      return const Center(child: Text('Nessun consumabile configurato per questa macchina.'));
+      return const Center(
+        child: Text('Nessun consumabile configurato per questa macchina.'),
+      );
     }
 
     return LayoutBuilder(
@@ -403,11 +423,8 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Serbatoi (dosi)',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              'Fattore monitorato (dosi)',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 12),
             GridView.builder(
@@ -439,7 +456,8 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
     final label = _labelForPercent(percent);
 
     final isLoadingThis = _refillLoadingType == cs.type;
-    final canRefill = cs.isEnabled && !cs.isConfigMissing && !cs.isFull && !isLoadingThis;
+    final canRefill =
+        cs.isEnabled && !cs.isConfigMissing && !cs.isFull && !isLoadingThis;
 
     return Card(
       child: Padding(
@@ -541,8 +559,8 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
                   cs.isFull
                       ? 'Pieno'
                       : cs.isConfigMissing
-                          ? 'Configura'
-                          : 'Refill',
+                      ? 'Configura'
+                      : 'Refill',
                 ),
               ),
             ),
@@ -570,10 +588,7 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
           ),
         ),
       ],
