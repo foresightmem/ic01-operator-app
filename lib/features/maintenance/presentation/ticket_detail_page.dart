@@ -31,6 +31,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../public_support/presentation/public_support_page.dart';
+
 class TicketDetailPage extends StatefulWidget {
   final String ticketId;
   const TicketDetailPage({super.key, required this.ticketId});
@@ -116,32 +118,47 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     setState(() => _actionLoading = true);
 
     try {
-      await supabase.from('tickets').update({
-        'status': newStatus,
-        if (newStatus == 'in_progress') 'assigned_technician_id': user.id,
-        if (newStatus == 'assigned') 'assigned_technician_id': user.id,
-        if (newStatus == 'in_progress')
-          'assigned_at': DateTime.now().toIso8601String(),
-        if (newStatus == 'closed')
-          'closed_at': DateTime.now().toIso8601String(),
-      }).eq('id', widget.ticketId);
+      final updated = await supabase
+          .from('tickets')
+          .update({
+            'status': newStatus,
+            if (newStatus == 'in_progress') 'assigned_technician_id': user.id,
+            if (newStatus == 'assigned') 'assigned_technician_id': user.id,
+            if (newStatus == 'in_progress')
+              'assigned_at': DateTime.now().toIso8601String(),
+            if (newStatus == 'resolved')
+              'resolved_at': DateTime.now().toIso8601String(),
+            if (newStatus == 'resolved')
+              'closed_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', widget.ticketId)
+          .select('id')
+          .maybeSingle();
 
-      // Se chiuso → crea una visita
-      if (newStatus == 'closed') {
+      if (updated == null) {
+        throw Exception(
+          'Ticket non aggiornato: permessi insufficienti o ticket non più disponibile.',
+        );
+      }
+
+      // Se risolto -> crea una visita
+      if (newStatus == 'resolved') {
         await supabase.from('visits').insert({
           'operator_id': user.id,
           'client_id': _ticket!['client_id'],
           'site_id': _ticket!['site_id'],
           'ticket_id': widget.ticketId,
           'visit_type': 'maintenance',
-          'notes': 'Ticket chiuso tramite app'
+          'notes': 'Ticket chiuso tramite app',
         });
       }
 
       await _loadTicket();
     } catch (e) {
-      // ignore: avoid_print
-      print("Errore update: $e");
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Errore aggiornamento ticket: $e')),
+      );
     } finally {
       if (mounted) setState(() => _actionLoading = false);
     }
@@ -155,8 +172,11 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
         return Colors.orange;
       case 'in_progress':
         return Colors.blue;
+      case 'resolved':
       case 'closed':
         return Colors.green;
+      case 'cancelled':
+        return Colors.grey;
       default:
         return Colors.grey;
     }
@@ -170,11 +190,27 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
         return 'Assegnato';
       case 'in_progress':
         return 'In corso';
+      case 'resolved':
       case 'closed':
-        return 'Chiuso';
+        return 'Risolto';
+      case 'cancelled':
+        return 'Annullato';
       default:
         return status;
     }
+  }
+
+  String _formatDurationSeconds(dynamic seconds) {
+    final value = (seconds as num?)?.toInt();
+    if (value == null || value < 0) return '-';
+    final minutes = value ~/ 60;
+    if (minutes < 60) return '$minutes min';
+    final hours = minutes ~/ 60;
+    final restMinutes = minutes % 60;
+    if (hours < 24) return '$hours h $restMinutes min';
+    final days = hours ~/ 24;
+    final restHours = hours % 24;
+    return '$days g $restHours h';
   }
 
   @override
@@ -215,8 +251,8 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
       body: (_loading || _loadingRole)
           ? const Center(child: CircularProgressIndicator())
           : _ticket == null
-              ? const Center(child: Text('Ticket non trovato'))
-              : _buildDetail(),
+          ? const Center(child: Text('Ticket non trovato'))
+          : _buildDetail(),
     );
   }
 
@@ -236,8 +272,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
               style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             Container(
-              padding:
-                  const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
               decoration: BoxDecoration(
                 color: statusColor.withValues(alpha: 0.12),
                 borderRadius: BorderRadius.circular(999),
@@ -259,6 +294,8 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
         Text('Cliente: ${t['client_name']}'),
         if (t['site_name'] != null) Text('Sede: ${t['site_name']}'),
         Text('Macchina: ${t['machine_code']}'),
+        if (t['reason'] != null)
+          Text('Motivo: ${publicTicketReasonLabel(t['reason'] as String)}'),
         const SizedBox(height: 12),
 
         // DESCRIZIONE
@@ -269,16 +306,10 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
             children: [
               const Text(
                 'Descrizione:',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 4),
-              Text(
-                t['description'],
-                style: const TextStyle(fontSize: 14),
-              ),
+              Text(t['description'], style: const TextStyle(fontSize: 14)),
               const SizedBox(height: 12),
             ],
           ),
@@ -288,6 +319,17 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
           'Aperto il: ${DateTime.parse(t['created_at']).toLocal()}'
               .split('.')
               .first,
+          style: const TextStyle(color: Colors.grey),
+        ),
+        if (t['resolved_at'] != null)
+          Text(
+            'Risolto il: ${DateTime.parse(t['resolved_at']).toLocal()}'
+                .split('.')
+                .first,
+            style: const TextStyle(color: Colors.grey),
+          ),
+        Text(
+          'Tempo risoluzione: ${_formatDurationSeconds(t['resolution_time_seconds'])}',
           style: const TextStyle(color: Colors.grey),
         ),
         const SizedBox(height: 30),
@@ -308,27 +350,49 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     final bool assignedToMe = assignedTech == currentUser?.id;
     final bool isAdmin = _role == 'admin';
 
-    // 🔒 ADMIN: sola lettura, solo testi informativi
     if (isAdmin) {
-      if (status == 'closed') {
-        return const Text(
-          'Ticket chiuso (solo visualizzazione admin)',
-          style: TextStyle(fontSize: 16, color: Colors.green),
-        );
-      }
-
-      final label = _statusLabel(status);
-      return Text(
-        '$label (solo visualizzazione admin)',
-        style: const TextStyle(fontSize: 14, color: Colors.grey),
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          OutlinedButton(
+            onPressed: status == 'open' ? null : () => _updateStatus('open'),
+            child: const Text('Riapri'),
+          ),
+          OutlinedButton(
+            onPressed: status == 'in_progress'
+                ? null
+                : () => _updateStatus('in_progress'),
+            child: const Text('In corso'),
+          ),
+          ElevatedButton(
+            onPressed: status == 'resolved' || status == 'closed'
+                ? null
+                : () => _updateStatus('resolved'),
+            child: const Text('Risolvi'),
+          ),
+          OutlinedButton(
+            onPressed: status == 'cancelled'
+                ? null
+                : () => _updateStatus('cancelled'),
+            child: const Text('Annulla'),
+          ),
+        ],
       );
     }
 
     // 👷 Tecnico: logica originale
-    if (status == 'closed') {
+    if (status == 'resolved' || status == 'closed') {
       return const Text(
-        'Ticket chiuso',
+        'Ticket risolto',
         style: TextStyle(fontSize: 16, color: Colors.green),
+      );
+    }
+
+    if (status == 'cancelled') {
+      return const Text(
+        'Ticket annullato',
+        style: TextStyle(fontSize: 16, color: Colors.grey),
       );
     }
 
@@ -349,8 +413,8 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     if (status == 'in_progress' && assignedToMe) {
       return ElevatedButton(
         style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-        onPressed: () => _updateStatus('closed'),
-        child: const Text('Chiudi ticket'),
+        onPressed: () => _updateStatus('resolved'),
+        child: const Text('Risolvi ticket'),
       );
     }
 

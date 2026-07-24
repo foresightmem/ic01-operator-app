@@ -6,8 +6,6 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
 
-
-
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
 
@@ -18,6 +16,7 @@ class AdminDashboardPage extends StatefulWidget {
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
   late Future<bool> _isAdminFuture;
   Future<_AdminKpiData>? _kpiFuture;
+  int _ticketKpiPeriodDays = 30;
 
   @override
   void initState() {
@@ -48,24 +47,41 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
     final now = DateTime.now().toUtc();
     final startOfToday = DateTime.utc(now.year, now.month, now.day);
+    final ticketKpiStart = now.subtract(Duration(days: _ticketKpiPeriodDays));
 
     // --- KPI "semplici" ---
     final clientsData = await supabase.from('clients').select('id, name');
-    final machinesData = await supabase.from('machines').select(
-        'id, code, site_id, yearly_shots, assigned_operator_id, current_fill_percent');
-    final sitesData =
-        await supabase.from('sites').select('id, client_id, name, city');
+    final machinesData = await supabase
+        .from('machines')
+        .select(
+          'id, code, site_id, yearly_shots, assigned_operator_id, current_fill_percent',
+        );
+    final sitesData = await supabase
+        .from('sites')
+        .select('id, client_id, name, city');
     final ticketsData = await supabase
         .from('tickets')
         .select(
-            'id, status, client_id, site_id, machine_id, assigned_technician_id, created_at, updated_at')
+          'id, status, client_id, site_id, machine_id, assigned_technician_id, assigned_operator_id, created_at, updated_at, resolved_at, closed_at, resolution_time_seconds',
+        )
         .order('updated_at', ascending: false)
-        .limit(30);
+        .limit(1000);
     final ticketsOpenData = ticketsData
         .where((t) => t['status'] == 'open')
         .toList(growable: false);
     final ticketsInProgressData = ticketsData
         .where((t) => t['status'] == 'in_progress')
+        .toList(growable: false);
+    final ticketsResolvedInPeriodData = ticketsData
+        .where((t) {
+          final status = t['status'] as String?;
+          final resolvedRaw = t['resolved_at'] ?? t['closed_at'];
+          if (status != 'resolved' && status != 'closed') return false;
+          if (resolvedRaw is! String) return false;
+          final resolvedAt = DateTime.tryParse(resolvedRaw);
+          if (resolvedAt == null) return false;
+          return !resolvedAt.toUtc().isBefore(ticketKpiStart);
+        })
         .toList(growable: false);
 
     final refillsTodayData = await supabase
@@ -82,7 +98,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     final refillsData = await supabase
         .from('refills')
         .select(
-            'id, machine_id, operator_id, previous_fill_percent, new_fill_percent, created_at')
+          'id, machine_id, operator_id, previous_fill_percent, new_fill_percent, created_at',
+        )
         .order('created_at', ascending: false)
         .limit(30);
 
@@ -93,8 +110,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         .limit(30);
 
     // profili (operatori & tecnici)
-    final profilesData =
-        await supabase.from('profiles').select('id, full_name, role');
+    final profilesData = await supabase
+        .from('profiles')
+        .select('id, full_name, role');
 
     // mappe di supporto
     final Map<String, String> clientIdToName = {};
@@ -126,6 +144,32 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           (map['full_name'] as String?) ?? 'Operatore';
     }
 
+    final resolutionDurations = <int>[];
+    final Map<String, List<int>> resolutionByOperator = {};
+    final Map<String, List<int>> resolutionByClient = {};
+
+    for (final row in ticketsResolvedInPeriodData) {
+      final map = row;
+      final seconds = _resolutionSecondsFromTicket(map);
+      if (seconds == null) continue;
+      resolutionDurations.add(seconds);
+
+      final String? techId = map['assigned_technician_id'] as String?;
+      final String? operatorId = map['assigned_operator_id'] as String?;
+      final operatorName = techId != null
+          ? (profileIdToName[techId] ?? 'Tecnico')
+          : operatorId != null
+          ? (profileIdToName[operatorId] ?? 'Operatore')
+          : 'Non assegnato';
+      resolutionByOperator.putIfAbsent(operatorName, () => []).add(seconds);
+
+      final String? clientId = map['client_id'] as String?;
+      final clientName = clientId != null
+          ? (clientIdToName[clientId] ?? 'Cliente')
+          : 'Cliente';
+      resolutionByClient.putIfAbsent(clientName, () => []).add(seconds);
+    }
+
     int totalShots = 0;
     final Map<String, int> shotsPerClient = {};
     final Map<String, int> shotsPerMachine = {};
@@ -148,7 +192,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         final clientId = siteIdToClientId[siteId];
         if (clientId != null) {
           final clientName = clientIdToName[clientId] ?? 'Senza nome';
-          shotsPerClient[clientName] = (shotsPerClient[clientName] ?? 0) + shots;
+          shotsPerClient[clientName] =
+              (shotsPerClient[clientName] ?? 0) + shots;
         }
       }
 
@@ -171,8 +216,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
       final String? machineId = map['machine_id'] as String?;
       final machine = machineId != null ? machineIdToMachine[machineId] : null;
-      final String machineCode =
-          machine != null ? (machine['code'] as String? ?? 'N/D') : 'N/D';
+      final String machineCode = machine != null
+          ? (machine['code'] as String? ?? 'N/D')
+          : 'N/D';
 
       String? siteName;
       String? clientName;
@@ -240,21 +286,20 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       }
 
       final String? clientId = map['client_id'] as String?;
-      final String clientName =
-          clientId != null ? (clientIdToName[clientId] ?? 'Cliente') : 'Cliente';
+      final String clientName = clientId != null
+          ? (clientIdToName[clientId] ?? 'Cliente')
+          : 'Cliente';
 
       final String? machineId = map['machine_id'] as String?;
       final machine = machineId != null ? machineIdToMachine[machineId] : null;
-      final String machineCode =
-          machine != null ? (machine['code'] as String? ?? 'N/D') : 'N/D';
+      final String machineCode = machine != null
+          ? (machine['code'] as String? ?? 'N/D')
+          : 'N/D';
 
       final String? techId = map['assigned_technician_id'] as String?;
       final String? techName = techId != null ? profileIdToName[techId] : null;
 
-      final subtitleParts = <String>[
-        clientName,
-        'Macchina $machineCode',
-      ];
+      final subtitleParts = <String>[clientName, 'Macchina $machineCode'];
       if (techName != null) {
         subtitleParts.add('Tecnico: $techName');
       }
@@ -276,8 +321,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       final createdAt = DateTime.parse(map['created_at'] as String);
 
       final String? clientId = map['client_id'] as String?;
-      final String clientName =
-          clientId != null ? (clientIdToName[clientId] ?? 'Cliente') : 'Cliente';
+      final String clientName = clientId != null
+          ? (clientIdToName[clientId] ?? 'Cliente')
+          : 'Cliente';
 
       String? siteName;
       if (map['site_id'] != null) {
@@ -289,7 +335,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           profileIdToName[map['operator_id'] as String] ?? 'Operatore';
 
       final String visitType = map['visit_type'] as String;
-      final String typeLabel = visitType == 'maintenance' ? 'manutenzione' : 'refill';
+      final String typeLabel = visitType == 'maintenance'
+          ? 'manutenzione'
+          : 'refill';
 
       final subtitleParts = <String>[clientName];
       if (siteName != null) subtitleParts.add(siteName);
@@ -300,8 +348,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           type: 'visit_$visitType',
           title: '$operatorName ha effettuato una visita $typeLabel',
           subtitle: subtitleParts.join(' • '),
-          icon:
-              visitType == 'maintenance' ? Icons.build : Icons.local_cafe_outlined,
+          icon: visitType == 'maintenance'
+              ? Icons.build
+              : Icons.local_cafe_outlined,
         ),
       );
     }
@@ -315,9 +364,14 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       totalMachines: machinesData.length,
       openTickets: ticketsOpenData.length,
       inProgressTickets: ticketsInProgressData.length,
+      resolvedTicketsInPeriod: ticketsResolvedInPeriodData.length,
       refillsToday: refillsTodayData.length,
       visitsToday: visitsTodayData.length,
       totalShots: totalShots,
+      averageResolutionSeconds: _averageSeconds(resolutionDurations),
+      medianResolutionSeconds: _medianSeconds(resolutionDurations),
+      resolutionByOperator: _durationAggregates(resolutionByOperator),
+      resolutionByClient: _durationAggregates(resolutionByClient),
       shotsPerClient: shotsPerClient,
       shotsPerMachine: shotsPerMachine,
       shotsPerOperator: shotsPerOperator,
@@ -325,11 +379,73 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
+  int? _resolutionSecondsFromTicket(Map<String, dynamic> ticket) {
+    final stored = (ticket['resolution_time_seconds'] as num?)?.toInt();
+    if (stored != null && stored >= 0) return stored;
+
+    final createdRaw = ticket['created_at'];
+    final resolvedRaw = ticket['resolved_at'] ?? ticket['closed_at'];
+    if (createdRaw is! String || resolvedRaw is! String) return null;
+
+    final createdAt = DateTime.tryParse(createdRaw);
+    final resolvedAt = DateTime.tryParse(resolvedRaw);
+    if (createdAt == null || resolvedAt == null) return null;
+
+    final seconds = resolvedAt.difference(createdAt).inSeconds;
+    return seconds < 0 ? null : seconds;
+  }
+
+  int? _averageSeconds(List<int> values) {
+    if (values.isEmpty) return null;
+    final total = values.fold<int>(0, (sum, value) => sum + value);
+    return total ~/ values.length;
+  }
+
+  int? _medianSeconds(List<int> values) {
+    if (values.isEmpty) return null;
+    final sorted = [...values]..sort();
+    final middle = sorted.length ~/ 2;
+    if (sorted.length.isOdd) return sorted[middle];
+    return ((sorted[middle - 1] + sorted[middle]) / 2).round();
+  }
+
+  List<_TicketDurationAggregate> _durationAggregates(
+    Map<String, List<int>> source,
+  ) {
+    final aggregates =
+        source.entries
+            .map(
+              (entry) => _TicketDurationAggregate(
+                label: entry.key,
+                ticketCount: entry.value.length,
+                averageSeconds: _averageSeconds(entry.value),
+                medianSeconds: _medianSeconds(entry.value),
+              ),
+            )
+            .toList()
+          ..sort((a, b) => b.ticketCount.compareTo(a.ticketCount));
+    return aggregates;
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<bool>(
       future: _isAdminFuture,
       builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return _AdminLoadErrorScaffold(
+            title: 'Area admin',
+            message:
+                'Non riesco a verificare il profilo admin. Controlla le policy RLS su profiles.',
+            onRetry: () {
+              setState(() {
+                _isAdminFuture = _checkIfAdmin();
+                _kpiFuture = null;
+              });
+            },
+          );
+        }
+
         if (!snapshot.hasData) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
@@ -340,9 +456,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
         if (!isAdmin) {
           return Scaffold(
-            appBar: AppBar(
-              title: const Text('Area admin'),
-            ),
+            appBar: AppBar(title: const Text('Area admin')),
             body: Center(
               child: Padding(
                 padding: const EdgeInsets.all(16),
@@ -398,6 +512,18 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           body: FutureBuilder<_AdminKpiData>(
             future: _kpiFuture,
             builder: (context, kpiSnapshot) {
+              if (kpiSnapshot.hasError) {
+                return _InlineLoadError(
+                  message:
+                      'Errore nel caricamento KPI admin. Verifica RLS/grant su clients, sites, machines, tickets, refills, visits e profiles.',
+                  onRetry: () {
+                    setState(() {
+                      _kpiFuture = _loadKpis();
+                    });
+                  },
+                );
+              }
+
               if (!kpiSnapshot.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
@@ -431,7 +557,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          kIsWeb ? 'Overview flotta (web)' : 'Overview flotta (app)',
+                          kIsWeb
+                              ? 'Overview flotta (web)'
+                              : 'Overview flotta (app)',
                           style: Theme.of(context).textTheme.titleLarge,
                         ),
                         const SizedBox(height: 16),
@@ -480,6 +608,25 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                               },
                             ),
                             _AdminKpiCard(
+                              label: 'Ticket risolti',
+                              value: kpi.resolvedTicketsInPeriod.toString(),
+                              subtitle: 'Ultimi $_ticketKpiPeriodDays giorni',
+                              icon: Icons.check_circle,
+                              onTap: () {
+                                context.go('/maintenance?status=resolved');
+                              },
+                            ),
+                            _AdminKpiCard(
+                              label: 'Tempo medio risoluzione',
+                              value: formatResolutionDuration(
+                                kpi.averageResolutionSeconds,
+                              ),
+                              subtitle:
+                                  'Mediana ${formatResolutionDuration(kpi.medianResolutionSeconds)}',
+                              icon: Icons.timer,
+                              onTap: null,
+                            ),
+                            _AdminKpiCard(
                               label: 'Copertura assenze',
                               value: 'Gestisci',
                               subtitle: 'Ribilancia giri operatori',
@@ -523,14 +670,29 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
                         const SizedBox(height: 24),
 
+                        _TicketResolutionKpiSection(
+                          periodDays: _ticketKpiPeriodDays,
+                          onPeriodChanged: (days) {
+                            setState(() {
+                              _ticketKpiPeriodDays = days;
+                              _kpiFuture = _loadKpis();
+                            });
+                          },
+                          averageSeconds: kpi.averageResolutionSeconds,
+                          medianSeconds: kpi.medianResolutionSeconds,
+                          byOperator: kpi.resolutionByOperator,
+                          byClient: kpi.resolutionByClient,
+                          onOpenTickets: () => context.go('/maintenance'),
+                        ),
+
+                        const SizedBox(height: 24),
+
                         Text(
                           'Erogazioni per cliente (top 5)',
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                        _ShotsBarChart(
-                          data: kpi.shotsPerClient,
-                        ),
+                        _ShotsBarChart(data: kpi.shotsPerClient),
 
                         const SizedBox(height: 24),
 
@@ -539,9 +701,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                        _ShotsBarChart(
-                          data: kpi.shotsPerMachine,
-                        ),
+                        _ShotsBarChart(data: kpi.shotsPerMachine),
 
                         const SizedBox(height: 24),
 
@@ -550,9 +710,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         const SizedBox(height: 8),
-                        _ShotsBarChart(
-                          data: kpi.shotsPerOperator,
-                        ),
+                        _ShotsBarChart(data: kpi.shotsPerOperator),
 
                         const SizedBox(height: 8),
                         _OperatorRankingCard(data: kpi.shotsPerOperator),
@@ -562,8 +720,9 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                         // Preview "Attività recenti" (spostate su pagina dedicata)
                         _RecentActivityPreviewCard(
                           events: kpi.recentEvents,
-                          onOpenAll: () => context.go('/admin/activities',
-                          extra: kpi.recentEvents
+                          onOpenAll: () => context.go(
+                            '/admin/activities',
+                            extra: kpi.recentEvents,
                           ),
                         ),
                       ],
@@ -579,14 +738,73 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   }
 }
 
+class _AdminLoadErrorScaffold extends StatelessWidget {
+  final String title;
+  final String message;
+  final VoidCallback onRetry;
+
+  const _AdminLoadErrorScaffold({
+    required this.title,
+    required this.message,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: _InlineLoadError(message: message, onRetry: onRetry),
+    );
+  }
+}
+
+class _InlineLoadError extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _InlineLoadError({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: 48,
+              color: Theme.of(context).colorScheme.error,
+            ),
+            const SizedBox(height: 12),
+            Text(message, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Riprova'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _AdminKpiData {
   final int totalClients;
   final int totalMachines;
   final int openTickets;
   final int inProgressTickets;
+  final int resolvedTicketsInPeriod;
   final int refillsToday;
   final int visitsToday;
   final int totalShots;
+  final int? averageResolutionSeconds;
+  final int? medianResolutionSeconds;
+  final List<_TicketDurationAggregate> resolutionByOperator;
+  final List<_TicketDurationAggregate> resolutionByClient;
   final Map<String, int> shotsPerClient;
   final Map<String, int> shotsPerMachine;
   final Map<String, int> shotsPerOperator;
@@ -597,14 +815,200 @@ class _AdminKpiData {
     required this.totalMachines,
     required this.openTickets,
     required this.inProgressTickets,
+    required this.resolvedTicketsInPeriod,
     required this.refillsToday,
     required this.visitsToday,
     required this.totalShots,
+    required this.averageResolutionSeconds,
+    required this.medianResolutionSeconds,
+    required this.resolutionByOperator,
+    required this.resolutionByClient,
     required this.shotsPerClient,
     required this.shotsPerMachine,
     required this.shotsPerOperator,
     required this.recentEvents,
   });
+}
+
+String formatResolutionDuration(int? seconds) {
+  if (seconds == null || seconds < 0) return '-';
+  final minutes = seconds ~/ 60;
+  if (minutes < 60) return '$minutes min';
+  final hours = minutes ~/ 60;
+  final restMinutes = minutes % 60;
+  if (hours < 24) return '${hours} h ${restMinutes} min';
+  final days = hours ~/ 24;
+  final restHours = hours % 24;
+  return '${days} g ${restHours} h';
+}
+
+class _TicketDurationAggregate {
+  final String label;
+  final int ticketCount;
+  final int? averageSeconds;
+  final int? medianSeconds;
+
+  const _TicketDurationAggregate({
+    required this.label,
+    required this.ticketCount,
+    required this.averageSeconds,
+    required this.medianSeconds,
+  });
+}
+
+class _TicketResolutionKpiSection extends StatelessWidget {
+  final int periodDays;
+  final ValueChanged<int> onPeriodChanged;
+  final int? averageSeconds;
+  final int? medianSeconds;
+  final List<_TicketDurationAggregate> byOperator;
+  final List<_TicketDurationAggregate> byClient;
+  final VoidCallback onOpenTickets;
+
+  const _TicketResolutionKpiSection({
+    required this.periodDays,
+    required this.onPeriodChanged,
+    required this.averageSeconds,
+    required this.medianSeconds,
+    required this.byOperator,
+    required this.byClient,
+    required this.onOpenTickets,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'KPI risoluzione ticket',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                DropdownButton<int>(
+                  value: periodDays,
+                  items: const [
+                    DropdownMenuItem(value: 7, child: Text('7 giorni')),
+                    DropdownMenuItem(value: 30, child: Text('30 giorni')),
+                    DropdownMenuItem(value: 90, child: Text('90 giorni')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) onPeriodChanged(value);
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 16,
+              runSpacing: 8,
+              children: [
+                _InlineMetric(
+                  label: 'Media generale',
+                  value: formatResolutionDuration(averageSeconds),
+                ),
+                _InlineMetric(
+                  label: 'Mediana generale',
+                  value: formatResolutionDuration(medianSeconds),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (byOperator.isEmpty && byClient.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('Nessun ticket risolto nel periodo selezionato.'),
+              )
+            else ...[
+              _DurationTable(title: 'Media per operatore', rows: byOperator),
+              const SizedBox(height: 12),
+              _DurationTable(title: 'Media per cliente', rows: byClient),
+            ],
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onOpenTickets,
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Vista completa ticket'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineMetric extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _InlineMetric({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 180,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DurationTable extends StatelessWidget {
+  final String title;
+  final List<_TicketDurationAggregate> rows;
+
+  const _DurationTable({required this.title, required this.rows});
+
+  @override
+  Widget build(BuildContext context) {
+    final visibleRows = rows.take(5).toList();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.bodyLarge),
+        const SizedBox(height: 6),
+        if (visibleRows.isEmpty)
+          const Text('Nessun dato disponibile.')
+        else
+          for (final row in visibleRows)
+            ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: Text(row.label),
+              subtitle: Text('${row.ticketCount} ticket risolti'),
+              trailing: Text(
+                formatResolutionDuration(row.averageSeconds),
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+      ],
+    );
+  }
 }
 
 class _AdminKpiCard extends StatelessWidget {
@@ -627,9 +1031,7 @@ class _AdminKpiCard extends StatelessWidget {
     final theme = Theme.of(context);
 
     final card = Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       elevation: 0.5,
       child: Padding(
         padding: const EdgeInsets.all(12),
@@ -720,10 +1122,7 @@ class _OperatorRankingCard extends StatelessWidget {
               ListTile(
                 dense: true,
                 contentPadding: EdgeInsets.zero,
-                leading: CircleAvatar(
-                  radius: 16,
-                  child: Text('${i + 1}'),
-                ),
+                leading: CircleAvatar(radius: 16, child: Text('${i + 1}')),
                 title: Text(entries[i].key),
                 subtitle: Text('${entries[i].value} erogazioni'),
               ),
@@ -755,8 +1154,9 @@ class _ShotsBarChart extends StatelessWidget {
     final top = entries.take(5).toList();
 
     // massimo valore tra le barre
-    final int maxValue =
-        top.map((e) => e.value).fold<int>(0, (prev, v) => v > prev ? v : prev);
+    final int maxValue = top
+        .map((e) => e.value)
+        .fold<int>(0, (prev, v) => v > prev ? v : prev);
 
     // arrotonda al "bin superiore" (multipli di 10.000)
     final double niceMaxY = ((maxValue / 10000).ceil() * 10000)
@@ -774,11 +1174,14 @@ class _ShotsBarChart extends StatelessWidget {
         final double labelRotation = isNarrow ? -0.8 : 0.0;
 
         final double minChartWidth = top.length * 80.0;
-        final double chartWidth =
-            constraints.maxWidth < minChartWidth ? minChartWidth : constraints.maxWidth;
+        final double chartWidth = constraints.maxWidth < minChartWidth
+            ? minChartWidth
+            : constraints.maxWidth;
 
         return Card(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
           child: Padding(
             padding: const EdgeInsets.all(16),
             child: SizedBox(
@@ -803,9 +1206,7 @@ class _ShotsBarChart extends StatelessWidget {
                             final value = top[group.x.toInt()].value;
                             return BarTooltipItem(
                               '$label\n$value erogazioni',
-                              const TextStyle(
-                                fontWeight: FontWeight.w600,
-                              ),
+                              const TextStyle(fontWeight: FontWeight.w600),
                             );
                           },
                         ),
@@ -963,66 +1364,67 @@ class _RecentActivityPreviewCard extends StatelessWidget {
                 'Nessuna attività recente.',
                 style: theme.textTheme.bodyMedium,
               )
-            else
-              ...[
-                for (final e in preview)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CircleAvatar(
-                          radius: 16,
-                          backgroundColor: theme.colorScheme.primary.withAlpha(20),
-                          child: Icon(
-                            e.icon,
-                            size: 16,
-                            color: theme.colorScheme.primary,
-                          ),
+            else ...[
+              for (final e in preview)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      CircleAvatar(
+                        radius: 16,
+                        backgroundColor: theme.colorScheme.primary.withAlpha(
+                          20,
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                e.title,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                        child: Icon(
+                          e.icon,
+                          size: 16,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              e.title,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                e.subtitle,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.outline,
-                                ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              e.subtitle,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.outline,
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        Text(
-                          _timeAgo(e.timestamp),
-                          style: const TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey,
-                          ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        _timeAgo(e.timestamp),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.grey,
                         ),
-                      ],
-                    ),
-                  ),
-                const Divider(height: 1),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: ElevatedButton.icon(
-                    onPressed: onOpenAll,
-                    icon: const Icon(Icons.history),
-                    label: const Text('Apri attività'),
+                      ),
+                    ],
                   ),
                 ),
-              ],
+              const Divider(height: 1),
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton.icon(
+                  onPressed: onOpenAll,
+                  icon: const Icon(Icons.history),
+                  label: const Text('Apri attività'),
+                ),
+              ),
+            ],
           ],
         ),
       ),

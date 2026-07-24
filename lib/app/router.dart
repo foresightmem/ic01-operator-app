@@ -4,6 +4,7 @@
 /// Definisce tutte le route dell'app tramite GoRouter:
 /// - Login (/login)
 /// - Reset password (/reset-password)
+/// - Segnalazione pubblica senza login (/segnalazione)
 /// - Area operatori (con bottom nav via ShellRoute + MainShell):
 ///     - Dashboard (/dashboard, /clients)
 ///     - Dettaglio cliente (/clients/:clientId)
@@ -43,6 +44,7 @@ import '../features/clients/presentation/client_detail_page.dart';
 import '../features/machines/presentation/machine_detail_page.dart';
 import '../features/maintenance/presentation/maintenance_tickets_page.dart';
 import '../features/maintenance/presentation/ticket_detail_page.dart';
+import '../features/public_support/presentation/public_support_page.dart';
 import 'main_shell.dart';
 
 /// Router principale dell'app IC-01.
@@ -52,10 +54,22 @@ final GoRouter appRouter = GoRouter(
     final session = Supabase.instance.client.auth.currentSession;
     final bool loggedIn = session != null;
 
-    final String location = state.uri.toString();
-    final bool goingToLogin = location == '/login';
+    final String path = state.uri.path;
+    final String normalizedPath = path.length > 1 && path.endsWith('/')
+        ? path.substring(0, path.length - 1)
+        : path;
 
-    if (!loggedIn && !goingToLogin) {
+    if (path != normalizedPath) {
+      return state.uri.replace(path: normalizedPath).toString();
+    }
+
+    final bool goingToLogin = path == '/login';
+    final bool publicRoute =
+        path == '/segnalazione' ||
+        path == '/support' ||
+        path == '/reset-password';
+
+    if (!loggedIn && !goingToLogin && !publicRoute) {
       return '/login';
     }
 
@@ -69,13 +83,20 @@ final GoRouter appRouter = GoRouter(
     // =========================
     // AUTH (fuori dalla shell)
     // =========================
-    GoRoute(
-      path: '/login',
-      builder: (context, state) => const LoginPage(),
-    ),
+    GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
     GoRoute(
       path: '/reset-password',
       builder: (context, state) => const ResetPasswordPage(),
+    ),
+    GoRoute(
+      path: '/segnalazione',
+      builder: (context, state) => const PublicSupportPage(),
+    ),
+    GoRoute(
+      path: '/support',
+      redirect: (context, state) {
+        return state.uri.replace(path: '/segnalazione').toString();
+      },
     ),
 
     // =========================
@@ -160,10 +181,7 @@ final GoRouter appRouter = GoRouter(
           index = 2;
         }
 
-        return MainShell(
-          currentIndex: index,
-          child: child,
-        );
+        return MainShell(currentIndex: index, child: child);
       },
       routes: <RouteBase>[
         GoRoute(
@@ -179,10 +197,7 @@ final GoRouter appRouter = GoRouter(
           builder: (context, state) {
             final clientId = state.pathParameters['clientId']!;
             final clientName = state.uri.queryParameters['name'];
-            return ClientDetailPage(
-              clientId: clientId,
-              clientName: clientName,
-            );
+            return ClientDetailPage(clientId: clientId, clientName: clientName);
           },
         ),
         GoRoute(
