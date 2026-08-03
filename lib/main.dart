@@ -24,6 +24,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app/app.dart';
 import 'app/env.dart';
 import 'core/services/push_notifications_service.dart';
+
 /// Entry point dell'applicazione IC-01 Refill.
 ///
 /// - Inizializza il binding di Flutter.

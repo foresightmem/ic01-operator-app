@@ -89,11 +89,9 @@ class _LoginPageState extends State<LoginPage> {
 
       if (role == 'technician') {
         context.go('/maintenance');
-      } 
-      else if (role == 'admin') {
+      } else if (role == 'admin') {
         context.go('/admin');
-      }
-       else {
+      } else {
         context.go('/dashboard');
       }
 
@@ -136,7 +134,9 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Email di recupero password inviata, se l’email esiste.'),
+          content: Text(
+            'Email di recupero password inviata, se l’email esiste.',
+          ),
         ),
       );
     } catch (e) {
@@ -173,10 +173,7 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 4),
                 const Text(
                   'Refill & Maintenance',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                  ),
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 const SizedBox(height: 24),
 
@@ -196,10 +193,7 @@ class _LoginPageState extends State<LoginPage> {
                         const SizedBox(height: 4),
                         const Text(
                           'Usa le credenziali fornite da IC-01 / GEDA.',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey,
-                          ),
+                          style: TextStyle(fontSize: 13, color: Colors.grey),
                         ),
                         const SizedBox(height: 16),
 
@@ -288,10 +282,7 @@ class _LoginPageState extends State<LoginPage> {
                 const SizedBox(height: 16),
                 const Text(
                   'IC-01 v.1 by MAGMA S.r.l',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey,
-                  ),
+                  style: TextStyle(fontSize: 11, color: Colors.grey),
                 ),
               ],
             ),

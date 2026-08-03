@@ -2,6 +2,27 @@
 
 App Flutter per operatori, tecnici e admin IC01/GEDA.
 
+## Onboarding clienti, sedi e macchine
+
+La prima parte dell'onboarding operativo e' documentata in
+[`docs/customer-machine-onboarding.md`](docs/customer-machine-onboarding.md).
+
+Include creazione cliente con sede principale, aggiunta sedi, creazione macchina
+con tipo `hot`/`cold`, capacita' dosi monitorate su
+`machine_consumables.capacity_units` e associazione macchina -> sede -> cliente
+tramite RPC Supabase transazionali.
+
+Il campo indirizzo usa Google Places tramite Edge Function Supabase autenticata:
+la chiave `GOOGLE_MAPS_API_KEY` resta nei secrets Supabase e la citta'
+riconosciuta viene salvata in `sites.city`.
+
+La validazione/hardening usa una baseline locale come fixture, fuori dalla
+catena deployabile di `supabase/migrations`, e ha applicato su `ic01-dev` la
+migration incrementale `20260803150129_deploy_customer_machine_onboarding_ic01_dev`.
+Include tenant isolation con `organizations`/`organization_id`, test SQL
+ripetibili in `supabase/tests/customer_machine_onboarding_validation.sql` e
+controlli RLS per accessi anonimi/cross-tenant.
+
 ## Aggiornamento segnalazioni ticket pubbliche
 
 In questo branch e' stato introdotto il flusso end-to-end per permettere a un

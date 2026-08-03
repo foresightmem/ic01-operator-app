@@ -62,10 +62,12 @@ class _AdminCoveragePageState extends State<AdminCoveragePage> {
 
       _operators = (rows as List)
           .map((r) => r as Map<String, dynamic>)
-          .map((m) => _ProfileItem(
-                id: m['id'] as String,
-                name: (m['full_name'] as String?) ?? 'Operatore',
-              ))
+          .map(
+            (m) => _ProfileItem(
+              id: m['id'] as String,
+              name: (m['full_name'] as String?) ?? 'Operatore',
+            ),
+          )
           .toList();
 
       if (_operators.isNotEmpty) {
@@ -142,9 +144,9 @@ class _AdminCoveragePageState extends State<AdminCoveragePage> {
       context.push('/admin/coverage/$unavailabilityId');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Errore: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Errore: $e')));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -254,9 +256,9 @@ class _AdminCoveragePageState extends State<AdminCoveragePage> {
     final candSitesRows = candSiteIds.isEmpty
         ? <dynamic>[]
         : await supabase
-            .from('sites')
-            .select('id, city')
-            .inFilter('id', candSiteIds);
+              .from('sites')
+              .select('id, city')
+              .inFilter('id', candSiteIds);
 
     final Map<String, String> candSiteIdToCity = {
       for (final s in (candSitesRows).cast<Map<String, dynamic>>())
@@ -318,8 +320,7 @@ class _AdminCoveragePageState extends State<AdminCoveragePage> {
         }
 
         // aggiorna load
-        load[city]![chosen] =
-            (load[city]![chosen] ?? 0) + machineIds.length;
+        load[city]![chosen] = (load[city]![chosen] ?? 0) + machineIds.length;
       }
     }
 
@@ -416,28 +417,32 @@ class _AdminCoveragePageState extends State<AdminCoveragePage> {
                                   children: [
                                     Expanded(
                                       child: OutlinedButton.icon(
-                                        onPressed: () => _pickDate(isStart: true),
+                                        onPressed: () =>
+                                            _pickDate(isStart: true),
                                         icon: const Icon(Icons.date_range),
                                         label: Text(
                                           _startDate == null
                                               ? 'Inizio'
                                               : _startDate!
-                                                  .toIso8601String()
-                                                  .substring(0, 10),
+                                                    .toIso8601String()
+                                                    .substring(0, 10),
                                         ),
                                       ),
                                     ),
                                     const SizedBox(width: 8),
                                     Expanded(
                                       child: OutlinedButton.icon(
-                                        onPressed: () => _pickDate(isStart: false),
-                                        icon: const Icon(Icons.date_range_outlined),
+                                        onPressed: () =>
+                                            _pickDate(isStart: false),
+                                        icon: const Icon(
+                                          Icons.date_range_outlined,
+                                        ),
                                         label: Text(
                                           _endDate == null
                                               ? 'Fine'
                                               : _endDate!
-                                                  .toIso8601String()
-                                                  .substring(0, 10),
+                                                    .toIso8601String()
+                                                    .substring(0, 10),
                                         ),
                                       ),
                                     ),

@@ -85,9 +85,7 @@ ThemeData _buildLightTheme() {
     cardTheme: CardThemeData(
       color: Colors.white,
       elevation: 1.5,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       margin: EdgeInsets.zero,
     ),
 
@@ -95,31 +93,21 @@ ThemeData _buildLightTheme() {
       style: ElevatedButton.styleFrom(
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(999),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-        textStyle: const TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w600,
-        ),
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       ),
     ),
 
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: primaryColor,
-        textStyle: const TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
       ),
     ),
 
     inputDecorationTheme: InputDecorationTheme(
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(10),
-      ),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
         borderSide: const BorderSide(color: primaryColor, width: 1.5),
@@ -130,22 +118,18 @@ ThemeData _buildLightTheme() {
       backgroundColor: Colors.white,
       elevation: 3,
       indicatorColor: primaryColor.withValues(alpha: 0.12),
-      labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>(
-        (states) {
-          final selected = states.contains(WidgetState.selected);
-          return TextStyle(
-            fontSize: 12,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-          );
-        },
-      ),
+      labelTextStyle: WidgetStateProperty.resolveWith<TextStyle>((states) {
+        final selected = states.contains(WidgetState.selected);
+        return TextStyle(
+          fontSize: 12,
+          fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+        );
+      }),
     ),
 
     snackBarTheme: SnackBarThemeData(
       behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
     ),
   );
 }

@@ -76,14 +76,13 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     final supabase = Supabase.instance.client;
 
     try {
-      await supabase.auth.updateUser(
-        UserAttributes(password: newPassword),
-      );
+      await supabase.auth.updateUser(UserAttributes(password: newPassword));
 
       if (!mounted) return;
 
       setState(() {
-        _successMessage = 'Password aggiornata con successo! Ora puoi accedere.';
+        _successMessage =
+            'Password aggiornata con successo! Ora puoi accedere.';
       });
 
       // Dopo 1.5s torni alla pagina di login
@@ -119,9 +118,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Reimposta password'),
-      ),
+      appBar: AppBar(title: const Text('Reimposta password')),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -152,10 +149,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                           const SizedBox(height: 8),
                           const Text(
                             'Hai richiesto il recupero della password. Inserisci la nuova password per il tuo account.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: Colors.grey,
-                            ),
+                            style: TextStyle(fontSize: 13, color: Colors.grey),
                           ),
                           const SizedBox(height: 16),
 
@@ -210,9 +204,13 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                             width: double.infinity,
                             child: ElevatedButton(
                               onPressed:
-                                  _loading || _errorMessage?.contains('Link non valido') == true
-                                      ? null
-                                      : _updatePassword,
+                                  _loading ||
+                                      _errorMessage?.contains(
+                                            'Link non valido',
+                                          ) ==
+                                          true
+                                  ? null
+                                  : _updatePassword,
                               child: _loading
                                   ? const SizedBox(
                                       width: 18,

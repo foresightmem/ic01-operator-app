@@ -31,6 +31,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../onboarding/presentation/onboarding_dialogs.dart';
+
 /// ===============================================================
 /// DashboardPage
 ///
@@ -63,13 +65,15 @@ class ClientState {
   });
 
   factory ClientState.fromMap(Map<String, dynamic> map) {
-    String _stringOrEmpty(dynamic value) => value == null ? '' : value.toString();
-    int _intOrZero(dynamic value) {
+    String stringOrEmpty(dynamic value) =>
+        value == null ? '' : value.toString();
+    int intOrZero(dynamic value) {
       if (value is int) return value;
       if (value is num) return value.toInt();
       return int.tryParse(value?.toString() ?? '') ?? 0;
     }
-    String _stateFromRank(int rank) {
+
+    String stateFromRank(int rank) {
       switch (rank) {
         case 4:
           return 'black';
@@ -84,17 +88,18 @@ class ClientState {
       }
     }
 
-    final rawWorstState = _stringOrEmpty(map['worst_state']);
-    final worstStateRank = _intOrZero(map['worst_state_rank']);
-    final computedWorstState =
-        rawWorstState.isNotEmpty ? rawWorstState : _stateFromRank(worstStateRank);
+    final rawWorstState = stringOrEmpty(map['worst_state']);
+    final worstStateRank = intOrZero(map['worst_state_rank']);
+    final computedWorstState = rawWorstState.isNotEmpty
+        ? rawWorstState
+        : stateFromRank(worstStateRank);
 
     return ClientState(
-      clientId: _stringOrEmpty(map['client_id']),
-      name: _stringOrEmpty(map['name']),
+      clientId: stringOrEmpty(map['client_id']),
+      name: stringOrEmpty(map['name']),
       worstState: computedWorstState.isEmpty ? 'unknown' : computedWorstState,
-      totalMachines: _intOrZero(map['total_machines']),
-      machinesToRefill: _intOrZero(map['machines_to_refill']),
+      totalMachines: intOrZero(map['total_machines']),
+      machinesToRefill: intOrZero(map['machines_to_refill']),
     );
   }
 }
@@ -103,10 +108,7 @@ class DashboardPage extends StatefulWidget {
   /// initialTab: 0 = Oggi/Domani, 1 = Tutti
   final int initialTab;
 
-  const DashboardPage({
-    super.key,
-    this.initialTab = 0,
-  });
+  const DashboardPage({super.key, this.initialTab = 0});
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -145,9 +147,35 @@ class _DashboardPageState extends State<DashboardPage> {
         .eq('assigned_operator_id', user.id) // 👈 filtro per operatore corrente
         .order('name', ascending: true);
 
-    return (data as List<dynamic>)
-        .map((row) => ClientState.fromMap(row as Map<String, dynamic>))
-        .toList();
+    final clientsById = <String, ClientState>{
+      for (final client in (data as List<dynamic>).map(
+        (row) => ClientState.fromMap(row as Map<String, dynamic>),
+      ))
+        client.clientId: client,
+    };
+
+    final accessibleClients = await supabase
+        .from('clients')
+        .select('id, name')
+        .order('name', ascending: true);
+
+    for (final row
+        in (accessibleClients as List).cast<Map<String, dynamic>>()) {
+      final clientId = (row['id'] as String?) ?? '';
+      if (clientId.isEmpty || clientsById.containsKey(clientId)) continue;
+      clientsById[clientId] = ClientState(
+        clientId: clientId,
+        name: (row['name'] as String?) ?? 'Senza nome',
+        worstState: 'unknown',
+        totalMachines: 0,
+        machinesToRefill: 0,
+      );
+    }
+
+    final clients = clientsById.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    return clients;
   }
 
   Future<void> _loadUserRole() async {
@@ -263,8 +291,9 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     // nessun red/black: usiamo il livello peggiore disponibile
-    final maxSev =
-        withSeverity.map((e) => e.sev).reduce((a, b) => a > b ? a : b);
+    final maxSev = withSeverity
+        .map((e) => e.sev)
+        .reduce((a, b) => a > b ? a : b);
     final today = withSeverity
         .where((e) => e.sev == maxSev)
         .map((e) => e.client)
@@ -277,8 +306,9 @@ class _DashboardPageState extends State<DashboardPage> {
     if (levelsBelow.isEmpty) {
       return (today, <ClientState>[]);
     }
-    final nextSev =
-        levelsBelow.reduce((a, b) => a > b ? a : b); // migliore tra i peggiori sotto
+    final nextSev = levelsBelow.reduce(
+      (a, b) => a > b ? a : b,
+    ); // migliore tra i peggiori sotto
     final tomorrow = withSeverity
         .where((e) => e.sev == nextSev)
         .map((e) => e.client)
@@ -289,15 +319,13 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildClientList(List<ClientState> clients) {
     if (clients.isEmpty) {
-      return const Center(
-        child: Text('Nessun cliente in questa sezione.'),
-      );
+      return const Center(child: Text('Nessun cliente in questa sezione.'));
     }
 
     return ListView.separated(
       padding: const EdgeInsets.all(16),
       itemCount: clients.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (context, index) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final client = clients[index];
         final color = _stateColor(client.worstState);
@@ -312,8 +340,9 @@ class _DashboardPageState extends State<DashboardPage> {
             borderRadius: BorderRadius.circular(12),
             onTap: () async {
               final encodedName = Uri.encodeComponent(client.name);
-              await context
-                  .push('/clients/${client.clientId}?name=$encodedName');
+              await context.push(
+                '/clients/${client.clientId}?name=$encodedName',
+              );
               if (mounted) {
                 _refresh();
               }
@@ -324,11 +353,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 leading: CircleAvatar(
                   radius: 18,
                   backgroundColor: color.withValues(alpha: 0.12),
-                  child: Icon(
-                    Icons.storefront,
-                    color: color,
-                    size: 20,
-                  ),
+                  child: Icon(Icons.storefront, color: color, size: 20),
                 ),
                 title: Text(
                   client.name,
@@ -344,10 +369,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     style: const TextStyle(fontSize: 13, height: 1.3),
                   ),
                 ),
-                trailing: const Icon(
-                  Icons.chevron_right,
-                  color: Colors.grey,
-                ),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
               ),
             ),
           ),
@@ -357,24 +379,15 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   /// Box KPI riusabile
-  Widget _buildKpiBox({
-    required String title,
-    required String value,
-  }) {
+  Widget _buildKpiBox({required String title, required String value}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: const TextStyle(fontSize: 12),
-        ),
+        Text(title, style: const TextStyle(fontSize: 12)),
         const SizedBox(height: 4),
         Text(
           value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
         ),
       ],
     );
@@ -388,8 +401,10 @@ class _DashboardPageState extends State<DashboardPage> {
   ) {
     final todayClients = today.length;
     final tomorrowClients = tomorrow.length;
-    final machinesToRefillToday =
-        today.fold<int>(0, (sum, c) => sum + c.machinesToRefill);
+    final machinesToRefillToday = today.fold<int>(
+      0,
+      (sum, c) => sum + c.machinesToRefill,
+    );
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
@@ -398,8 +413,10 @@ class _DashboardPageState extends State<DashboardPage> {
           Expanded(
             child: Card(
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                  horizontal: 8,
+                ),
                 child: _buildKpiBox(
                   title: 'Clienti oggi',
                   value: '$todayClients',
@@ -411,8 +428,10 @@ class _DashboardPageState extends State<DashboardPage> {
           Expanded(
             child: Card(
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                  horizontal: 8,
+                ),
                 child: _buildKpiBox(
                   title: 'Clienti domani',
                   value: '$tomorrowClients',
@@ -424,8 +443,10 @@ class _DashboardPageState extends State<DashboardPage> {
           Expanded(
             child: Card(
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                padding: const EdgeInsets.symmetric(
+                  vertical: 12,
+                  horizontal: 8,
+                ),
                 child: _buildKpiBox(
                   title: 'Macchine da refillare',
                   value: '$machinesToRefillToday',
@@ -456,10 +477,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             Expanded(
               child: TabBarView(
-                children: [
-                  _buildClientList(today),
-                  _buildClientList(tomorrow),
-                ],
+                children: [_buildClientList(today), _buildClientList(tomorrow)],
               ),
             ),
           ],
@@ -481,19 +499,13 @@ class _DashboardPageState extends State<DashboardPage> {
     final user = Supabase.instance.client.auth.currentUser;
 
     if (_roleLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     // Se è un tecnico, non deve usare la dashboard refill
     if (_userRole == 'technician') {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Accesso non consentito'),
-        ),
+        appBar: AppBar(title: const Text('Accesso non consentito')),
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24.0),
@@ -528,6 +540,26 @@ class _DashboardPageState extends State<DashboardPage> {
               : 'Tutti i clienti assegnati',
         ),
         actions: [
+          IconButton(
+            tooltip: 'Nuovo cliente',
+            icon: const Icon(Icons.person_add_alt_1),
+            onPressed: () async {
+              final created = await showCreateClientDialog(context);
+              if (created && mounted) {
+                _refresh();
+              }
+            },
+          ),
+          IconButton(
+            tooltip: 'Nuova macchina',
+            icon: const Icon(Icons.add_business),
+            onPressed: () async {
+              final created = await showCreateMachineDialog(context);
+              if (created && mounted) {
+                _refresh();
+              }
+            },
+          ),
           if (user != null)
             Center(
               child: Padding(

@@ -6,6 +6,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
 
+import '../../onboarding/presentation/onboarding_dialogs.dart';
+
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
 
@@ -583,11 +585,43 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
                               },
                             ),
                             _AdminKpiCard(
+                              label: 'Nuovo cliente',
+                              value: 'Aggiungi',
+                              subtitle: 'Cliente con sede principale',
+                              icon: Icons.person_add_alt_1,
+                              onTap: () async {
+                                final created = await showCreateClientDialog(
+                                  context,
+                                );
+                                if (created && mounted) {
+                                  setState(() {
+                                    _kpiFuture = _loadKpis();
+                                  });
+                                }
+                              },
+                            ),
+                            _AdminKpiCard(
                               label: 'Macchine totali',
                               value: kpi.totalMachines.toString(),
                               subtitle: 'Tabella machines',
                               icon: Icons.coffee,
                               onTap: null,
+                            ),
+                            _AdminKpiCard(
+                              label: 'Nuova macchina',
+                              value: 'Installa',
+                              subtitle: 'Cliente, sede, tipo e capacità',
+                              icon: Icons.add_business,
+                              onTap: () async {
+                                final created = await showCreateMachineDialog(
+                                  context,
+                                );
+                                if (created && mounted) {
+                                  setState(() {
+                                    _kpiFuture = _loadKpis();
+                                  });
+                                }
+                              },
                             ),
                             _AdminKpiCard(
                               label: 'Ticket aperti',

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../onboarding/data/customer_machine_onboarding_service.dart';
+import '../../onboarding/presentation/onboarding_dialogs.dart';
+
 class AdminClientDetailPage extends StatefulWidget {
   final String clientId;
 
@@ -55,8 +58,9 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
         .select('id, name, city, address')
         .eq('client_id', widget.clientId);
 
-    final sites =
-        (sitesRaw as List).map((e) => e as Map<String, dynamic>).toList();
+    final sites = (sitesRaw as List)
+        .map((e) => e as Map<String, dynamic>)
+        .toList();
 
     final siteIds = sites.map((s) => s['id'] as String).toList();
 
@@ -65,7 +69,8 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
       final machinesRaw = await supabase
           .from('machines')
           .select(
-              'id, code, site_id, current_fill_percent, yearly_shots, hw_serial')
+            'id, code, site_id, current_fill_percent, yearly_shots, hw_serial',
+          )
           .inFilter('site_id', siteIds);
 
       machines = (machinesRaw as List)
@@ -115,8 +120,61 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
       notes: clientRaw['notes'] as String?,
       totalMachines: machinesWithSite.length,
       totalShots: totalShots,
+      sites: sites
+          .map(
+            (site) => _ClientSite(
+              id: site['id'] as String,
+              name: site['name'] as String? ?? 'Sede',
+              address: site['address'] as String?,
+              city: site['city'] as String?,
+            ),
+          )
+          .toList(),
       machines: machinesWithSite,
     );
+  }
+
+  Future<void> _deleteClient() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Elimina cliente'),
+        content: const Text(
+          'Puoi eliminare solo clienti senza macchine, ticket o visite. Continuare?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await CustomerMachineOnboardingService().deleteClient(widget.clientId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Cliente eliminato.')));
+      context.go('/admin/clients');
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            onboardingUserMessage(error, OnboardingAction.deleteClient),
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -133,12 +191,8 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
         final isAdmin = snapshot.data ?? false;
         if (!isAdmin) {
           return Scaffold(
-            appBar: AppBar(
-              title: const Text('Cliente'),
-            ),
-            body: const Center(
-              child: Text('Accesso riservato agli admin.'),
-            ),
+            appBar: AppBar(title: const Text('Cliente')),
+            body: const Center(child: Text('Accesso riservato agli admin.')),
           );
         }
 
@@ -149,6 +203,43 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
               icon: const Icon(Icons.arrow_back),
               onPressed: () => context.go('/admin/clients'),
             ),
+            actions: [
+              IconButton(
+                tooltip: 'Nuova sede',
+                icon: const Icon(Icons.add_location_alt_outlined),
+                onPressed: () async {
+                  final created = await showCreateSiteDialog(
+                    context,
+                    clientId: widget.clientId,
+                  );
+                  if (created && mounted) {
+                    setState(() {
+                      _dataFuture = _loadData();
+                    });
+                  }
+                },
+              ),
+              IconButton(
+                tooltip: 'Nuova macchina',
+                icon: const Icon(Icons.add_business),
+                onPressed: () async {
+                  final created = await showCreateMachineDialog(
+                    context,
+                    initialClientId: widget.clientId,
+                  );
+                  if (created && mounted) {
+                    setState(() {
+                      _dataFuture = _loadData();
+                    });
+                  }
+                },
+              ),
+              IconButton(
+                tooltip: 'Elimina cliente',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: _deleteClient,
+              ),
+            ],
           ),
           body: FutureBuilder<_ClientMachinesData>(
             future: _dataFuture,
@@ -166,10 +257,9 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
                 children: [
                   Text(
                     data.clientName,
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleLarge
-                        ?.copyWith(fontWeight: FontWeight.bold),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   if (data.vatNumber != null &&
                       data.vatNumber!.trim().isNotEmpty)
@@ -178,8 +268,7 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   const SizedBox(height: 12),
-                  if (data.notes != null &&
-                      data.notes!.trim().isNotEmpty)
+                  if (data.notes != null && data.notes!.trim().isNotEmpty)
                     Text(
                       data.notes!,
                       style: Theme.of(context).textTheme.bodyMedium,
@@ -204,6 +293,14 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
                   ),
                   const SizedBox(height: 24),
 
+                  Text('Sedi', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+
+                  if (data.sites.isEmpty) const Text('Nessuna sede associata.'),
+                  for (final site in data.sites) _SiteCard(site: site),
+
+                  const SizedBox(height: 24),
+
                   Text(
                     'Macchine',
                     style: Theme.of(context).textTheme.titleMedium,
@@ -212,8 +309,7 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
 
                   if (data.machines.isEmpty)
                     const Text('Nessuna macchina associata.'),
-                  for (final m in data.machines)
-                    _MachineCard(machine: m),
+                  for (final m in data.machines) _MachineCard(machine: m),
                 ],
               );
             },
@@ -230,26 +326,20 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
   }) {
     return Expanded(
       child: Card(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         elevation: 0.5,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              Text(label, style: Theme.of(context).textTheme.bodySmall),
               const SizedBox(height: 4),
               Text(
                 value,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.bold),
+                style: Theme.of(
+                  context,
+                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -266,6 +356,7 @@ class _ClientMachinesData {
   final String? notes;
   final int totalMachines;
   final int totalShots;
+  final List<_ClientSite> sites;
   final List<_MachineWithSite> machines;
 
   _ClientMachinesData({
@@ -275,18 +366,34 @@ class _ClientMachinesData {
     required this.notes,
     required this.totalMachines,
     required this.totalShots,
+    required this.sites,
     required this.machines,
   });
 
   factory _ClientMachinesData.empty() => _ClientMachinesData(
-        clientId: null,
-        clientName: '',
-        vatNumber: null,
-        notes: null,
-        totalMachines: 0,
-        totalShots: 0,
-        machines: const [],
-      );
+    clientId: null,
+    clientName: '',
+    vatNumber: null,
+    notes: null,
+    totalMachines: 0,
+    totalShots: 0,
+    sites: const [],
+    machines: const [],
+  );
+}
+
+class _ClientSite {
+  final String id;
+  final String name;
+  final String? address;
+  final String? city;
+
+  const _ClientSite({
+    required this.id,
+    required this.name,
+    required this.address,
+    required this.city,
+  });
 }
 
 class _MachineWithSite {
@@ -307,6 +414,34 @@ class _MachineWithSite {
     required this.siteName,
     required this.city,
   });
+}
+
+class _SiteCard extends StatelessWidget {
+  final _ClientSite site;
+
+  const _SiteCard({required this.site});
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitleParts = <String>[
+      if ((site.address ?? '').trim().isNotEmpty) site.address!.trim(),
+      if ((site.city ?? '').trim().isNotEmpty) site.city!.trim(),
+    ];
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ListTile(
+        leading: const Icon(Icons.place_outlined),
+        title: Text(site.name),
+        subtitle: Text(
+          subtitleParts.isEmpty
+              ? 'Indirizzo non disponibile'
+              : subtitleParts.join(' - '),
+        ),
+      ),
+    );
+  }
 }
 
 class _MachineCard extends StatelessWidget {
@@ -352,8 +487,10 @@ class _MachineCard extends StatelessWidget {
                   ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: color.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(999),
@@ -379,8 +516,7 @@ class _MachineCard extends StatelessWidget {
               'Erogazioni anno: ${machine.yearlyShots}',
               style: const TextStyle(fontSize: 13),
             ),
-            if (machine.hwSerial != null &&
-                machine.hwSerial!.trim().isNotEmpty)
+            if (machine.hwSerial != null && machine.hwSerial!.trim().isNotEmpty)
               Text(
                 'HW: ${machine.hwSerial}',
                 style: const TextStyle(fontSize: 11, color: Colors.grey),

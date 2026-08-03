@@ -36,11 +36,11 @@ class PushNotificationsService {
 
   static const AndroidNotificationChannel _androidChannel =
       AndroidNotificationChannel(
-    'ic01_push_default',
-    'Notifiche',
-    description: 'Notifiche push dell’app',
-    importance: Importance.high,
-  );
+        'ic01_push_default',
+        'Notifiche',
+        description: 'Notifiche push dell’app',
+        importance: Importance.high,
+      );
 
   Future<void> init() async {
     if (_initialized) return;
@@ -83,8 +83,7 @@ class PushNotificationsService {
 
     FirebaseMessaging.onMessage.listen((message) {
       final notification = message.notification;
-      final title =
-          notification?.title ?? (message.data['title'] as String?);
+      final title = notification?.title ?? (message.data['title'] as String?);
       final body = notification?.body ?? (message.data['body'] as String?);
       if (title == null && body == null) return;
 
@@ -132,18 +131,16 @@ class PushNotificationsService {
   }
 
   Future<void> _requestPermissions() async {
-    await _messaging?.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    await _messaging?.requestPermission(alert: true, badge: true, sound: true);
   }
 
   Future<void> _initLocalNotifications() async {
     const androidInit = AndroidInitializationSettings('ic_launcher');
     const iosInit = DarwinInitializationSettings();
-    const initSettings =
-        InitializationSettings(android: androidInit, iOS: iosInit);
+    const initSettings = InitializationSettings(
+      android: androidInit,
+      iOS: iosInit,
+    );
 
     await _localNotifications.initialize(
       initSettings,
@@ -156,7 +153,8 @@ class PushNotificationsService {
     if (defaultTargetPlatform == TargetPlatform.android) {
       final androidPlugin = _localNotifications
           .resolvePlatformSpecificImplementation<
-              AndroidFlutterLocalNotificationsPlugin>();
+            AndroidFlutterLocalNotificationsPlugin
+          >();
       await androidPlugin?.createNotificationChannel(_androidChannel);
     }
   }
@@ -165,17 +163,15 @@ class PushNotificationsService {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null) return;
 
-    final platform =
-        defaultTargetPlatform == TargetPlatform.android ? 'android' : 'ios';
+    final platform = defaultTargetPlatform == TargetPlatform.android
+        ? 'android'
+        : 'ios';
 
-    await Supabase.instance.client.from('push_tokens').upsert(
-      {
-        'user_id': user.id,
-        'device_id': _deviceId,
-        'platform': platform,
-        'token': token,
-      },
-      onConflict: 'device_id,platform',
-    );
+    await Supabase.instance.client.from('push_tokens').upsert({
+      'user_id': user.id,
+      'device_id': _deviceId,
+      'platform': platform,
+      'token': token,
+    }, onConflict: 'device_id,platform');
   }
 }

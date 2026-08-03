@@ -5,10 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AdminCoveragePlanPage extends StatefulWidget {
   final String unavailabilityId;
 
-  const AdminCoveragePlanPage({
-    super.key,
-    required this.unavailabilityId,
-  });
+  const AdminCoveragePlanPage({super.key, required this.unavailabilityId});
 
   @override
   State<AdminCoveragePlanPage> createState() => _AdminCoveragePlanPageState();
@@ -82,10 +79,12 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
 
       _operators = (operatorsRows as List)
           .map((m) => m as Map<String, dynamic>)
-          .map((m) => _ProfileItem(
-                id: m['id'] as String,
-                name: (m['full_name'] as String?) ?? 'Operatore',
-              ))
+          .map(
+            (m) => _ProfileItem(
+              id: m['id'] as String,
+              name: (m['full_name'] as String?) ?? 'Operatore',
+            ),
+          )
           .toList();
 
       // suggested assignments: filtriamo per operatore assente + date (v1)
@@ -94,7 +93,9 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
 
       final assignmentsRows = await supabase
           .from('temp_machine_assignments')
-          .select('id, machine_id, original_operator_id, new_operator_id, start_date, end_date, status')
+          .select(
+            'id, machine_id, original_operator_id, new_operator_id, start_date, end_date, status',
+          )
           .eq('original_operator_id', abs.operatorId)
           .eq('start_date', start)
           .eq('end_date', end)
@@ -105,14 +106,18 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
           .toList();
 
       // info macchine+site+client per rendering
-      final machineIds =
-          assignmentList.map((a) => a['machine_id'] as String).toSet().toList();
+      final machineIds = assignmentList
+          .map((a) => a['machine_id'] as String)
+          .toSet()
+          .toList();
 
       Map<String, _MachineInfo> machineInfoById = {};
       if (machineIds.isNotEmpty) {
         final machineRows = await supabase
             .from('machines')
-            .select('id, code, site_id, sites(name, city, client_id, clients(name))')
+            .select(
+              'id, code, site_id, sites(name, city, client_id, clients(name))',
+            )
             .inFilter('id', machineIds);
 
         for (final r in (machineRows as List).cast<Map<String, dynamic>>()) {
@@ -146,15 +151,19 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
     }
   }
 
-  Future<void> _updateRowOperator(_AssignmentRow row, String newOperatorId) async {
+  Future<void> _updateRowOperator(
+    _AssignmentRow row,
+    String newOperatorId,
+  ) async {
     setState(() {
       row.newOperatorId = newOperatorId;
     });
 
     final supabase = Supabase.instance.client;
-    await supabase.from('temp_machine_assignments').update({
-      'new_operator_id': newOperatorId,
-    }).eq('id', row.id);
+    await supabase
+        .from('temp_machine_assignments')
+        .update({'new_operator_id': newOperatorId})
+        .eq('id', row.id);
   }
 
   Future<void> _confirmPlan() async {
@@ -177,16 +186,16 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
           .eq('status', 'suggested');
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Piano confermato.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Piano confermato.')));
 
       context.go('/admin');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Errore conferma: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Errore conferma: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -226,10 +235,7 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
           color: Colors.grey.shade100,
           child: Text(
             key,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
           ),
         ),
       );
@@ -264,10 +270,7 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
                 items: operators
                     .where((o) => o.id != absentOperatorId)
                     .map(
-                      (o) => DropdownMenuItem(
-                        value: o.id,
-                        child: Text(o.name),
-                      ),
+                      (o) => DropdownMenuItem(value: o.id, child: Text(o.name)),
                     )
                     .toList(),
                 onChanged: (value) {
@@ -340,60 +343,61 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
           body: _loading
               ? const Center(child: CircularProgressIndicator())
               : (_absence == null)
-                  ? const Center(child: Text('Assenza non trovata.'))
-                  : Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 900),
-                        child: ListView(
-                          padding: const EdgeInsets.all(16),
-                          children: [
-                            _AbsenceHeader(absence: _absence!),
-                            const SizedBox(height: 12),
-                            if (_rows.isEmpty)
-                              const Card(
-                                child: Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: Text(
-                                      'Nessuna macchina da riassegnare (o piano già generato/confirmato).'),
-                                ),
-                              )
-                            else
-                              Card(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Column(
-                                  children: _buildGroupedRows(
-                                    context,
-                                    _rows,
-                                    _operators,
-                                    _absence!.operatorId,
-                                  ),
-                                ),
+              ? const Center(child: Text('Assenza non trovata.'))
+              : Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 900),
+                    child: ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        _AbsenceHeader(absence: _absence!),
+                        const SizedBox(height: 12),
+                        if (_rows.isEmpty)
+                          const Card(
+                            child: Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Text(
+                                'Nessuna macchina da riassegnare (o piano già generato/confirmato).',
                               ),
-                            const SizedBox(height: 16),
-                            FilledButton.icon(
-                              onPressed: _saving ? null : _confirmPlan,
-                              icon: _saving
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.check),
-                              label: const Text('Conferma piano'),
                             ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Nota: dopo la conferma, le assegnazioni temporanee vengono applicate agli operatori durante il periodo selezionato, senza modificare l’assegnazione “di default” delle macchine.',
-                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                          )
+                        else
+                          Card(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
                             ),
-                          ],
+                            child: Column(
+                              children: _buildGroupedRows(
+                                context,
+                                _rows,
+                                _operators,
+                                _absence!.operatorId,
+                              ),
+                            ),
+                          ),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: _saving ? null : _confirmPlan,
+                          icon: _saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.check),
+                          label: const Text('Conferma piano'),
                         ),
-                      ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Nota: dopo la conferma, le assegnazioni temporanee vengono applicate agli operatori durante il periodo selezionato, senza modificare l’assegnazione “di default” delle macchine.',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
                     ),
+                  ),
+                ),
         );
       },
     );
