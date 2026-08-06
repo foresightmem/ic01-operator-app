@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
 
+import '../../../core/ui/app_design_system.dart';
 import '../../onboarding/presentation/onboarding_dialogs.dart';
 
 class AdminDashboardPage extends StatefulWidget {
@@ -449,9 +450,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         }
 
         if (!snapshot.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: AppLoading());
         }
 
         final isAdmin = snapshot.data ?? false;
@@ -492,16 +491,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           appBar: AppBar(
             title: const Text('Dashboard Admin'),
             actions: [
-              if (user != null)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Text(
-                      user.email ?? '',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ),
+              if (user != null) AppUserEmailAction(email: user.email),
               IconButton(
                 icon: const Icon(Icons.logout),
                 onPressed: () async {
@@ -527,242 +517,218 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               }
 
               if (!kpiSnapshot.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return const AppLoading(label: 'Caricamento dashboard');
               }
 
               final kpi = kpiSnapshot.data!;
 
-              return LayoutBuilder(
-                builder: (context, constraints) {
-                  final double width = constraints.maxWidth;
+              return AppPage(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.zero,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        kIsWeb
+                            ? 'Overview flotta (web)'
+                            : 'Overview flotta (app)',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 16),
 
-                  late int crossAxisCount;
-                  late double childAspectRatio;
-
-                  if (width >= 1200) {
-                    // Desktop largo
-                    crossAxisCount = 4;
-                    childAspectRatio = 3.0;
-                  } else if (width >= 800) {
-                    // Tablet / small desktop
-                    crossAxisCount = 3;
-                    childAspectRatio = 2.2;
-                  } else {
-                    // Mobile
-                    crossAxisCount = 2;
-                    childAspectRatio = 1.0;
-                  }
-
-                  return SingleChildScrollView(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          kIsWeb
-                              ? 'Overview flotta (web)'
-                              : 'Overview flotta (app)',
-                          style: Theme.of(context).textTheme.titleLarge,
-                        ),
-                        const SizedBox(height: 16),
-
-                        // KPI cards
-                        GridView.count(
-                          crossAxisCount: crossAxisCount,
-                          childAspectRatio: childAspectRatio,
-                          mainAxisSpacing: 12,
-                          crossAxisSpacing: 12,
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          children: [
-                            _AdminKpiCard(
-                              label: 'Clienti totali',
-                              value: kpi.totalClients.toString(),
-                              subtitle: 'Tabella clients',
-                              icon: Icons.apartment,
-                              onTap: () {
-                                context.go('/admin/clients');
-                              },
-                            ),
-                            _AdminKpiCard(
-                              label: 'Nuovo cliente',
-                              value: 'Aggiungi',
-                              subtitle: 'Cliente con sede principale',
-                              icon: Icons.person_add_alt_1,
-                              onTap: () async {
-                                final created = await showCreateClientDialog(
-                                  context,
-                                );
-                                if (created && mounted) {
-                                  setState(() {
-                                    _kpiFuture = _loadKpis();
-                                  });
-                                }
-                              },
-                            ),
-                            _AdminKpiCard(
-                              label: 'Macchine totali',
-                              value: kpi.totalMachines.toString(),
-                              subtitle: 'Tabella machines',
-                              icon: Icons.coffee,
-                              onTap: null,
-                            ),
-                            _AdminKpiCard(
-                              label: 'Nuova macchina',
-                              value: 'Installa',
-                              subtitle: 'Cliente, sede, tipo e capacità',
-                              icon: Icons.add_business,
-                              onTap: () async {
-                                final created = await showCreateMachineDialog(
-                                  context,
-                                );
-                                if (created && mounted) {
-                                  setState(() {
-                                    _kpiFuture = _loadKpis();
-                                  });
-                                }
-                              },
-                            ),
-                            _AdminKpiCard(
-                              label: 'Ticket aperti',
-                              value: kpi.openTickets.toString(),
-                              subtitle: 'status = open',
-                              icon: Icons.report_problem,
-                              onTap: () {
-                                context.go('/maintenance?status=open');
-                              },
-                            ),
-                            _AdminKpiCard(
-                              label: 'Ticket in corso',
-                              value: kpi.inProgressTickets.toString(),
-                              subtitle: 'status = in_progress',
-                              icon: Icons.build,
-                              onTap: () {
-                                context.go('/maintenance?status=in_progress');
-                              },
-                            ),
-                            _AdminKpiCard(
-                              label: 'Ticket risolti',
-                              value: kpi.resolvedTicketsInPeriod.toString(),
-                              subtitle: 'Ultimi $_ticketKpiPeriodDays giorni',
-                              icon: Icons.check_circle,
-                              onTap: () {
-                                context.go('/maintenance?status=resolved');
-                              },
-                            ),
-                            _AdminKpiCard(
-                              label: 'Tempo medio risoluzione',
-                              value: formatResolutionDuration(
-                                kpi.averageResolutionSeconds,
-                              ),
-                              subtitle:
-                                  'Mediana ${formatResolutionDuration(kpi.medianResolutionSeconds)}',
-                              icon: Icons.timer,
-                              onTap: null,
-                            ),
-                            _AdminKpiCard(
-                              label: 'Copertura assenze',
-                              value: 'Gestisci',
-                              subtitle: 'Ribilancia giri operatori',
-                              icon: Icons.swap_horiz,
-                              onTap: () => context.go('/admin/coverage'),
-                            ),
-                            _AdminKpiCard(
-                              label: 'Refill oggi',
-                              value: kpi.refillsToday.toString(),
-                              subtitle: 'refills.created_at ≥ oggi',
-                              icon: Icons.local_cafe,
-                              onTap: () {
-                                context.go('/dashboard');
-                              },
-                            ),
-                            _AdminKpiCard(
-                              label: 'Gestione Macchine',
-                              value: 'Impostazioni contatori macchine',
-                              subtitle: 'Chiamare MAGMA per dubbi',
-                              icon: Icons.settings,
-                              onTap: () {
-                                context.go('/admin/machine-config');
-                              },
-                            ),
-                            _AdminKpiCard(
-                              label: 'Visite oggi',
-                              value: kpi.visitsToday.toString(),
-                              subtitle: 'visits.created_at ≥ oggi',
-                              icon: Icons.route,
-                              onTap: null,
-                            ),
-                            _AdminKpiCard(
-                              label: 'Erogazioni totali',
-                              value: kpi.totalShots.toString(),
-                              subtitle: 'Somma machines.yearly_shots',
-                              icon: Icons.waterfall_chart,
-                              onTap: null,
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        _TicketResolutionKpiSection(
-                          periodDays: _ticketKpiPeriodDays,
-                          onPeriodChanged: (days) {
-                            setState(() {
-                              _ticketKpiPeriodDays = days;
-                              _kpiFuture = _loadKpis();
-                            });
-                          },
-                          averageSeconds: kpi.averageResolutionSeconds,
-                          medianSeconds: kpi.medianResolutionSeconds,
-                          byOperator: kpi.resolutionByOperator,
-                          byClient: kpi.resolutionByClient,
-                          onOpenTickets: () => context.go('/maintenance'),
-                        ),
-
-                        const SizedBox(height: 24),
-
-                        Text(
-                          'Erogazioni per cliente (top 5)',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        _ShotsBarChart(data: kpi.shotsPerClient),
-
-                        const SizedBox(height: 24),
-
-                        Text(
-                          'Erogazioni per macchina (top 5)',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        _ShotsBarChart(data: kpi.shotsPerMachine),
-
-                        const SizedBox(height: 24),
-
-                        Text(
-                          'Performance operatori (erogazioni totali)',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        _ShotsBarChart(data: kpi.shotsPerOperator),
-
-                        const SizedBox(height: 8),
-                        _OperatorRankingCard(data: kpi.shotsPerOperator),
-
-                        const SizedBox(height: 24),
-
-                        // Preview "Attività recenti" (spostate su pagina dedicata)
-                        _RecentActivityPreviewCard(
-                          events: kpi.recentEvents,
-                          onOpenAll: () => context.go(
-                            '/admin/activities',
-                            extra: kpi.recentEvents,
+                      // KPI cards
+                      AppAdaptiveGrid(
+                        minTileWidth: 230,
+                        maxColumns: 4,
+                        childAspectRatio: 2.45,
+                        children: [
+                          _AdminKpiCard(
+                            label: 'Clienti totali',
+                            value: kpi.totalClients.toString(),
+                            subtitle: 'Tabella clients',
+                            icon: Icons.apartment,
+                            onTap: () {
+                              context.go('/admin/clients');
+                            },
                           ),
+                          _AdminKpiCard(
+                            label: 'Nuovo cliente',
+                            value: 'Aggiungi',
+                            subtitle: 'Cliente con sede principale',
+                            icon: Icons.person_add_alt_1,
+                            onTap: () async {
+                              final created = await showCreateClientDialog(
+                                context,
+                              );
+                              if (created && mounted) {
+                                setState(() {
+                                  _kpiFuture = _loadKpis();
+                                });
+                              }
+                            },
+                          ),
+                          _AdminKpiCard(
+                            label: 'Macchine totali',
+                            value: kpi.totalMachines.toString(),
+                            subtitle: 'Tabella machines',
+                            icon: Icons.coffee,
+                            onTap: null,
+                          ),
+                          _AdminKpiCard(
+                            label: 'Nuova macchina',
+                            value: 'Installa',
+                            subtitle: 'Cliente, sede, tipo e capacità',
+                            icon: Icons.add_business,
+                            onTap: () async {
+                              final created = await showCreateMachineDialog(
+                                context,
+                              );
+                              if (created && mounted) {
+                                setState(() {
+                                  _kpiFuture = _loadKpis();
+                                });
+                              }
+                            },
+                          ),
+                          _AdminKpiCard(
+                            label: 'Ticket aperti',
+                            value: kpi.openTickets.toString(),
+                            subtitle: 'status = open',
+                            icon: Icons.report_problem,
+                            onTap: () {
+                              context.go('/maintenance?status=open');
+                            },
+                          ),
+                          _AdminKpiCard(
+                            label: 'Ticket in corso',
+                            value: kpi.inProgressTickets.toString(),
+                            subtitle: 'status = in_progress',
+                            icon: Icons.build,
+                            onTap: () {
+                              context.go('/maintenance?status=in_progress');
+                            },
+                          ),
+                          _AdminKpiCard(
+                            label: 'Ticket risolti',
+                            value: kpi.resolvedTicketsInPeriod.toString(),
+                            subtitle: 'Ultimi $_ticketKpiPeriodDays giorni',
+                            icon: Icons.check_circle,
+                            onTap: () {
+                              context.go('/maintenance?status=resolved');
+                            },
+                          ),
+                          _AdminKpiCard(
+                            label: 'Tempo medio risoluzione',
+                            value: formatResolutionDuration(
+                              kpi.averageResolutionSeconds,
+                            ),
+                            subtitle:
+                                'Mediana ${formatResolutionDuration(kpi.medianResolutionSeconds)}',
+                            icon: Icons.timer,
+                            onTap: null,
+                          ),
+                          _AdminKpiCard(
+                            label: 'Copertura assenze',
+                            value: 'Gestisci',
+                            subtitle: 'Ribilancia giri operatori',
+                            icon: Icons.swap_horiz,
+                            onTap: () => context.go('/admin/coverage'),
+                          ),
+                          _AdminKpiCard(
+                            label: 'Refill oggi',
+                            value: kpi.refillsToday.toString(),
+                            subtitle: 'refills.created_at ≥ oggi',
+                            icon: Icons.local_cafe,
+                            onTap: () {
+                              context.go('/dashboard');
+                            },
+                          ),
+                          _AdminKpiCard(
+                            label: 'Gestione Macchine',
+                            value: 'Contatori',
+                            subtitle: 'Impostazioni macchine',
+                            icon: Icons.settings,
+                            onTap: () {
+                              context.go('/admin/machine-config');
+                            },
+                          ),
+                          _AdminKpiCard(
+                            label: 'Visite oggi',
+                            value: kpi.visitsToday.toString(),
+                            subtitle: 'visits.created_at ≥ oggi',
+                            icon: Icons.route,
+                            onTap: null,
+                          ),
+                          _AdminKpiCard(
+                            label: 'Erogazioni totali',
+                            value: kpi.totalShots.toString(),
+                            subtitle: 'Somma machines.yearly_shots',
+                            icon: Icons.waterfall_chart,
+                            onTap: null,
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      _TicketResolutionKpiSection(
+                        periodDays: _ticketKpiPeriodDays,
+                        onPeriodChanged: (days) {
+                          setState(() {
+                            _ticketKpiPeriodDays = days;
+                            _kpiFuture = _loadKpis();
+                          });
+                        },
+                        averageSeconds: kpi.averageResolutionSeconds,
+                        medianSeconds: kpi.medianResolutionSeconds,
+                        byOperator: kpi.resolutionByOperator,
+                        byClient: kpi.resolutionByClient,
+                        onOpenTickets: () => context.go('/maintenance'),
+                      ),
+
+                      const SizedBox(height: 24),
+
+                      Text(
+                        'Erogazioni per cliente (top 5)',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      _ShotsBarChart(data: kpi.shotsPerClient),
+
+                      const SizedBox(height: 24),
+
+                      Text(
+                        'Erogazioni per macchina (top 5)',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      _ShotsBarChart(data: kpi.shotsPerMachine),
+
+                      const SizedBox(height: 24),
+
+                      Text(
+                        'Performance operatori (erogazioni totali)',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      _ShotsBarChart(data: kpi.shotsPerOperator),
+
+                      const SizedBox(height: 8),
+                      _OperatorRankingCard(data: kpi.shotsPerOperator),
+
+                      const SizedBox(height: 24),
+
+                      // Preview "Attività recenti" (spostate su pagina dedicata)
+                      _RecentActivityPreviewCard(
+                        events: kpi.recentEvents,
+                        onOpenAll: () => context.go(
+                          '/admin/activities',
+                          extra: kpi.recentEvents,
                         ),
-                      ],
-                    ),
-                  );
-                },
+                      ),
+                    ],
+                  ),
+                ),
               );
             },
           ),
@@ -1063,49 +1029,53 @@ class _AdminKpiCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isLongValue = value.length > 14;
 
-    final card = Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      elevation: 0.5,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontWeight: FontWeight.w500,
-                    ),
+    final card = AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-                Icon(
-                  icon,
-                  size: 20,
-                  color: theme.colorScheme.primary.withAlpha(230),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
+              Icon(icon, size: 20, color: AppColors.petroleum),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style:
+                (isLongValue
+                        ? theme.textTheme.titleLarge
+                        : theme.textTheme.headlineSmall)
+                    ?.copyWith(fontWeight: FontWeight.bold, height: 1.05),
+          ),
+          const SizedBox(height: AppSpacing.xxs),
+          Flexible(
+            child: Text(
               subtitle,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
               style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.outline,
+                color: AppColors.muted,
+                height: 1.15,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
 
@@ -1115,7 +1085,7 @@ class _AdminKpiCard extends StatelessWidget {
 
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(AppRadii.md),
       child: card,
     );
   }

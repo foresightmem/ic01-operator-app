@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:ic01_operator_app/core/ui/app_design_system.dart';
 import 'package:ic01_operator_app/models/admin_event.dart';
 
 class AdminActivitiesPage extends StatelessWidget {
@@ -12,29 +13,21 @@ class AdminActivitiesPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Attività recenti')),
       body: events.isEmpty
-          ? const Center(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('Nessuna attività recente.'),
-              ),
+          ? const AppEmptyState(
+              title: 'Nessuna attività recente',
+              icon: Icons.history_outlined,
             )
           : ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: context.responsive.pagePadding,
               itemCount: events.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (context, index) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final e = events[index];
                 return ListTile(
                   leading: CircleAvatar(
                     radius: 18,
-                    backgroundColor: Theme.of(
-                      context,
-                    ).colorScheme.primary.withAlpha(20),
-                    child: Icon(
-                      e.icon,
-                      size: 18,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
+                    backgroundColor: AppColors.petroleumSoft,
+                    child: Icon(e.icon, size: 18, color: AppColors.petroleum),
                   ),
                   title: Text(e.title, style: const TextStyle(fontSize: 14)),
                   subtitle: Text(
@@ -43,7 +36,10 @@ class AdminActivitiesPage extends StatelessWidget {
                   ),
                   trailing: Text(
                     _timeAgo(e.timestamp),
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppColors.muted,
+                    ),
                   ),
                 );
               },

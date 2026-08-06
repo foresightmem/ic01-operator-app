@@ -16,6 +16,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
 import '../../onboarding/data/customer_machine_onboarding_service.dart';
 import '../../onboarding/presentation/onboarding_dialogs.dart';
 
@@ -147,15 +148,15 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
   Color _stateColor(String state) {
     switch (state) {
       case 'green':
-        return Colors.green;
+        return AppColors.success;
       case 'yellow':
-        return Colors.orange;
+        return AppColors.warning;
       case 'red':
-        return Colors.red;
+        return AppColors.danger;
       case 'black':
-        return Colors.black;
+        return AppColors.stopped;
       default:
-        return Colors.grey;
+        return AppColors.muted;
     }
   }
 
@@ -219,27 +220,31 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
         future: _futureMachines,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const AppLoading();
           }
 
           if (snapshot.hasError) {
-            return Center(
-              child: Text('Errore nel caricamento: ${snapshot.error}'),
+            return AppErrorState(
+              message: 'Errore nel caricamento: ${snapshot.error}',
+              onRetry: _refreshMachines,
             );
           }
 
           final machines = snapshot.data ?? [];
 
           if (machines.isEmpty) {
-            return const Center(
-              child: Text('Nessuna macchina trovata per questo cliente.'),
+            return const AppEmptyState(
+              title: 'Nessuna macchina trovata',
+              message: 'Aggiungi una sede o una macchina dal menu in alto.',
+              icon: Icons.coffee_maker_outlined,
             );
           }
 
           return ListView.separated(
-            padding: const EdgeInsets.all(16),
+            padding: context.responsive.pagePadding,
             itemCount: machines.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 8),
+            separatorBuilder: (context, index) =>
+                const SizedBox(height: AppSpacing.sm),
             itemBuilder: (context, index) {
               final m = machines[index];
               final color = _stateColor(m.state);
@@ -248,14 +253,22 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
               return Card(
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: color,
+                    backgroundColor: color.withValues(alpha: 0.12),
                     child: Text(
                       '${m.currentFillPercent.toStringAsFixed(0)}%',
-                      style: const TextStyle(color: Colors.white, fontSize: 11),
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                  title: Text(m.code),
+                  title: Text(
+                    m.code,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                   subtitle: Text('${m.siteName}\nStato: $label (${m.state})'),
+                  trailing: const Icon(Icons.chevron_right),
                   isThreeLine: true,
                   onTap: () async {
                     await context.push('/machines/${m.machineId}');

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
+
 enum PublicTicketReason {
   outOfStock('out_of_stock', 'Scorte finite'),
   malfunction('malfunction', 'Malfunzionamento');
@@ -120,9 +122,11 @@ class _PublicSupportPageState extends State<PublicSupportPage> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            padding: context.responsive.pagePadding,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
+              constraints: BoxConstraints(
+                maxWidth: context.responsive.formMaxWidth,
+              ),
               child: _submitted
                   ? _SuccessState(
                       duplicate: _duplicate,
@@ -130,119 +134,116 @@ class _PublicSupportPageState extends State<PublicSupportPage> {
                           _message ?? 'Segnalazione inviata correttamente.',
                       onNewReport: _resetForm,
                     )
-                  : Card(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
-                        child: Form(
-                          key: _formKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'GEDA',
-                                style: theme.textTheme.headlineMedium?.copyWith(
-                                  color: theme.colorScheme.primary,
-                                  fontWeight: FontWeight.w800,
+                  : AppSectionCard(
+                      padding: const EdgeInsets.all(AppSpacing.lg),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              'MAGMA',
+                              style: theme.textTheme.headlineMedium?.copyWith(
+                                color: AppColors.black,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.xs),
+                            Text(
+                              'Segnalazione manutenzione',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.xs),
+                            Text(
+                              'Inserisci il codice riportato sulla macchina.',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: AppColors.muted,
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.md),
+                            TextFormField(
+                              controller: _machineCodeController,
+                              textCapitalization: TextCapitalization.characters,
+                              textInputAction: TextInputAction.next,
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              decoration: const InputDecoration(
+                                labelText: 'Codice macchina',
+                                prefixIcon: Icon(Icons.qr_code_2),
+                              ),
+                              onChanged: (_) {
+                                if (_error != null) {
+                                  setState(() => _error = null);
+                                }
+                              },
+                              validator: (value) {
+                                final normalized = normalizePublicMachineCode(
+                                  value ?? '',
+                                );
+                                if (normalized.isEmpty) {
+                                  return 'Inserisci il codice macchina.';
+                                }
+                                if (normalized.length < 2) {
+                                  return 'Controlla il codice macchina.';
+                                }
+                                return null;
+                              },
+                            ),
+                            const SizedBox(height: AppSpacing.md),
+                            Text(
+                              'Motivo',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.xs),
+                            for (final reason in PublicTicketReason.values)
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: _ReasonChoice(
+                                  label: reason.label,
+                                  selected: _reason == reason,
+                                  enabled: !_submitting,
+                                  onTap: () {
+                                    setState(() {
+                                      _reason = reason;
+                                      _error = null;
+                                    });
+                                  },
                                 ),
                               ),
+                            if (_error != null) ...[
                               const SizedBox(height: 4),
                               Text(
-                                'Segnalazione manutenzione',
-                                style: theme.textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'Inserisci il codice riportato sulla macchina.',
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.outline,
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              TextFormField(
-                                controller: _machineCodeController,
-                                textCapitalization:
-                                    TextCapitalization.characters,
-                                textInputAction: TextInputAction.next,
-                                autocorrect: false,
-                                enableSuggestions: false,
-                                decoration: const InputDecoration(
-                                  labelText: 'Codice macchina',
-                                  prefixIcon: Icon(Icons.qr_code_2),
-                                ),
-                                onChanged: (_) {
-                                  if (_error != null) {
-                                    setState(() => _error = null);
-                                  }
-                                },
-                                validator: (value) {
-                                  final normalized = normalizePublicMachineCode(
-                                    value ?? '',
-                                  );
-                                  if (normalized.isEmpty) {
-                                    return 'Inserisci il codice macchina.';
-                                  }
-                                  if (normalized.length < 2) {
-                                    return 'Controlla il codice macchina.';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                'Motivo',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              for (final reason in PublicTicketReason.values)
-                                Padding(
-                                  padding: const EdgeInsets.only(bottom: 8),
-                                  child: _ReasonChoice(
-                                    label: reason.label,
-                                    selected: _reason == reason,
-                                    enabled: !_submitting,
-                                    onTap: () {
-                                      setState(() {
-                                        _reason = reason;
-                                        _error = null;
-                                      });
-                                    },
-                                  ),
-                                ),
-                              if (_error != null) ...[
-                                const SizedBox(height: 4),
-                                Text(
-                                  _error!,
-                                  style: TextStyle(
-                                    color: theme.colorScheme.error,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                              const SizedBox(height: 16),
-                              ElevatedButton.icon(
-                                onPressed: _submitting ? null : _submit,
-                                icon: _submitting
-                                    ? const SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Icon(Icons.send),
-                                label: Text(
-                                  _submitting
-                                      ? 'Invio in corso...'
-                                      : 'Invia segnalazione',
+                                _error!,
+                                style: TextStyle(
+                                  color: AppColors.danger,
+                                  fontSize: 13,
                                 ),
                               ),
                             ],
-                          ),
+                            const SizedBox(height: AppSpacing.md),
+                            ElevatedButton.icon(
+                              onPressed: _submitting ? null : _submit,
+                              icon: _submitting
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.send),
+                              label: Text(
+                                _submitting
+                                    ? 'Invio in corso...'
+                                    : 'Invia segnalazione',
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -273,25 +274,27 @@ class _ReasonChoice extends StatelessWidget {
 
     return InkWell(
       onTap: enabled ? onTap : null,
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(AppRadii.md),
       child: Container(
         constraints: const BoxConstraints(minHeight: 54),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.sm,
+          vertical: AppSpacing.sm,
+        ),
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(AppRadii.md),
           border: Border.all(
             color: selected ? theme.colorScheme.primary : theme.dividerColor,
           ),
+          color: selected ? AppColors.petroleumSoft : AppColors.surface,
         ),
         child: Row(
           children: [
             Icon(
               selected ? Icons.radio_button_checked : Icons.radio_button_off,
-              color: selected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.outline,
+              color: selected ? theme.colorScheme.primary : AppColors.muted,
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: AppSpacing.sm),
             Expanded(
               child: Text(
                 label,
@@ -322,40 +325,38 @@ class _SuccessState extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              duplicate ? Icons.info_outline : Icons.check_circle_outline,
-              size: 56,
-              color: duplicate ? Colors.orange : Colors.green,
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            duplicate ? Icons.info_outline : Icons.check_circle_outline,
+            size: 56,
+            color: duplicate ? AppColors.warning : AppColors.success,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          Text(
+            duplicate ? 'Segnalazione già aperta' : 'Segnalazione inviata',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(height: 16),
-            Text(
-              duplicate ? 'Segnalazione già aperta' : 'Segnalazione inviata',
-              textAlign: TextAlign.center,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 20),
-            OutlinedButton.icon(
-              onPressed: onNewReport,
-              icon: const Icon(Icons.add),
-              label: const Text('Nuova segnalazione'),
-            ),
-          ],
-        ),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium,
+          ),
+          const SizedBox(height: AppSpacing.md),
+          OutlinedButton.icon(
+            onPressed: onNewReport,
+            icon: const Icon(Icons.add),
+            label: const Text('Nuova segnalazione'),
+          ),
+        ],
       ),
     );
   }

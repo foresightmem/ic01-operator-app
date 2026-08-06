@@ -2,10 +2,17 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../../core/ui/app_design_system.dart';
 import '../data/customer_machine_onboarding_service.dart';
 
 String _newAddressSessionToken() =>
     'addr-${DateTime.now().microsecondsSinceEpoch}-${Object().hashCode}';
+
+double _dialogContentWidth(BuildContext context, double desktopWidth) {
+  final responsive = context.responsive;
+  if (!responsive.isCompact) return desktopWidth;
+  return responsive.width - (AppSpacing.md * 4);
+}
 
 Future<ResolvedAddress> _resolveTypedAddressOrFallback(
   CustomerMachineOnboardingService service,
@@ -148,7 +155,7 @@ class _CreateClientDialogState extends State<_CreateClientDialog> {
       content: Form(
         key: _formKey,
         child: SizedBox(
-          width: 420,
+          width: _dialogContentWidth(context, 420),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -167,7 +174,7 @@ class _CreateClientDialogState extends State<_CreateClientDialog> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.sm),
                 TextFormField(
                   controller: _siteNameController,
                   decoration: const InputDecoration(
@@ -177,7 +184,7 @@ class _CreateClientDialogState extends State<_CreateClientDialog> {
                   ),
                   textInputAction: TextInputAction.next,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.sm),
                 _AddressAutocompleteField(
                   service: _service,
                   controller: _siteAddressController,
@@ -195,12 +202,11 @@ class _CreateClientDialogState extends State<_CreateClientDialog> {
                   },
                 ),
                 if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
+                  const SizedBox(height: AppSpacing.sm),
+                  AppStatusPill(
+                    label: _error!,
+                    color: AppColors.danger,
+                    icon: Icons.error_outline,
                   ),
                 ],
               ],
@@ -317,44 +323,47 @@ class _CreateSiteDialogState extends State<_CreateSiteDialog> {
       content: Form(
         key: _formKey,
         child: SizedBox(
-          width: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _siteNameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nome sede',
-                  hintText: 'Sede',
-                  prefixIcon: Icon(Icons.place_outlined),
+          width: _dialogContentWidth(context, 420),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextFormField(
+                  controller: _siteNameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Nome sede',
+                    hintText: 'Sede',
+                    prefixIcon: Icon(Icons.place_outlined),
+                  ),
+                  textInputAction: TextInputAction.next,
                 ),
-                textInputAction: TextInputAction.next,
-              ),
-              const SizedBox(height: 12),
-              _AddressAutocompleteField(
-                service: _service,
-                controller: _siteAddressController,
-                labelText: 'Indirizzo',
-                onAddressResolved: (resolved) {
-                  _siteCity = resolved?.city;
-                  _siteLatitude = resolved?.latitude;
-                  _siteLongitude = resolved?.longitude;
-                },
-                validator: (value) {
-                  if (normalizedRequiredText(value ?? '').isEmpty) {
-                    return 'Inserisci l\'indirizzo della sede.';
-                  }
-                  return null;
-                },
-              ),
-              if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(
-                  _error!,
-                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                const SizedBox(height: AppSpacing.sm),
+                _AddressAutocompleteField(
+                  service: _service,
+                  controller: _siteAddressController,
+                  labelText: 'Indirizzo',
+                  onAddressResolved: (resolved) {
+                    _siteCity = resolved?.city;
+                    _siteLatitude = resolved?.latitude;
+                    _siteLongitude = resolved?.longitude;
+                  },
+                  validator: (value) {
+                    if (normalizedRequiredText(value ?? '').isEmpty) {
+                      return 'Inserisci l\'indirizzo della sede.';
+                    }
+                    return null;
+                  },
                 ),
+                if (_error != null) ...[
+                  const SizedBox(height: AppSpacing.sm),
+                  AppStatusPill(
+                    label: _error!,
+                    color: AppColors.danger,
+                    icon: Icons.error_outline,
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
@@ -533,11 +542,11 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
     return AlertDialog(
       title: const Text('Nuova macchina'),
       content: SizedBox(
-        width: 520,
+        width: _dialogContentWidth(context, 520),
         child: _loading
             ? const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: CircularProgressIndicator()),
+                padding: EdgeInsets.all(AppSpacing.lg),
+                child: AppLoading(),
               )
             : _buildForm(context),
       ),
@@ -566,7 +575,7 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
   Widget _buildForm(BuildContext context) {
     if (_clients.isEmpty) {
       return const Padding(
-        padding: EdgeInsets.all(16),
+        padding: EdgeInsets.all(AppSpacing.md),
         child: Text('Crea prima almeno un cliente.'),
       );
     }
@@ -604,7 +613,7 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
               validator: (value) =>
                   value == null ? 'Seleziona un cliente.' : null,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.sm),
             DropdownButtonFormField<String>(
               key: ValueKey('${_selectedClientId}_${_sites.length}'),
               initialValue: _selectedSiteId,
@@ -652,7 +661,7 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
                   ),
                 ),
               ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.sm),
             SegmentedButton<OnboardingMachineType>(
               segments: const [
                 ButtonSegment(
@@ -675,7 +684,7 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
                       });
                     },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.sm),
             TextFormField(
               controller: _capacityController,
               decoration: const InputDecoration(
@@ -692,7 +701,7 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
                 return null;
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.sm),
             TextFormField(
               controller: _codeController,
               decoration: const InputDecoration(
@@ -734,7 +743,7 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
                 validator: (value) =>
                     value == null ? 'Seleziona un operatore.' : null,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.sm),
             ],
             TextFormField(
               controller: _hwSerialController,
@@ -744,10 +753,11 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
               ),
             ),
             if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(
-                _error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              const SizedBox(height: AppSpacing.sm),
+              AppStatusPill(
+                label: _error!,
+                color: AppColors.danger,
+                icon: Icons.error_outline,
               ),
             ],
           ],

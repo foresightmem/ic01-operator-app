@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
+
 enum TemperatureMode { hot, cold }
 
 enum ConsumableType { hot, cold, coffee, milk, powder, water }
@@ -510,7 +512,7 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
     final user = _supabase.auth.currentUser;
 
     if (_checkingRole) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: AppLoading());
     }
 
     if (!_isAdmin) {
@@ -518,16 +520,7 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
         appBar: AppBar(
           title: const Text('Backoffice Serbatoi'),
           actions: [
-            if (user != null)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: Text(
-                    user.email ?? '',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-              ),
+            if (user != null) AppUserEmailAction(email: user.email),
             IconButton(
               icon: const Icon(Icons.logout),
               onPressed: () async {
@@ -552,16 +545,7 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
       appBar: AppBar(
         title: const Text('Backoffice Serbatoi (Dev)'),
         actions: [
-          if (user != null)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Text(
-                  user.email ?? '',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ),
+          if (user != null) AppUserEmailAction(email: user.email),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -572,30 +556,36 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
         ],
       ),
       body: _loadingMachines
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading(label: 'Caricamento macchine')
           : _machines.isEmpty
-          ? const Center(child: Text('Nessuna macchina trovata.'))
+          ? const AppEmptyState(
+              title: 'Nessuna macchina trovata',
+              icon: Icons.coffee_maker_outlined,
+            )
           : RefreshIndicator(
               onRefresh: () async {
                 await _loadMachines();
               },
               child: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: context.responsive.pagePadding,
                 children: [
                   _buildMachinePickerCard(selectedLabel),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.sm),
                   _buildModeCard(),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.sm),
                   _buildConsumablesCard(),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.sm),
                   if (_configError != null)
                     Text(
                       _configError!,
-                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                      style: const TextStyle(
+                        color: AppColors.danger,
+                        fontSize: 13,
+                      ),
                     ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.sm),
                   _buildSaveBar(),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpacing.lg),
                 ],
               ),
             ),
@@ -603,130 +593,122 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
   }
 
   Widget _buildMachinePickerCard(String selectedLabel) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Selezione macchina',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Selezione macchina',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          DropdownButtonFormField<String>(
+            key: ValueKey(_selectedMachineId),
+            initialValue: _selectedMachineId,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+              labelText: 'Macchina',
             ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              key: ValueKey(_selectedMachineId),
-              initialValue: _selectedMachineId,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                isDense: true,
-                labelText: 'Macchina',
-              ),
-              items: _machines
-                  .map(
-                    (m) => DropdownMenuItem(value: m.id, child: Text(m.code)),
-                  )
-                  .toList(),
-              onChanged: _loadingConfig ? null : _onChangeMachine,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Selezionata: $selectedLabel',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
+            items: _machines
+                .map((m) => DropdownMenuItem(value: m.id, child: Text(m.code)))
+                .toList(),
+            onChanged: _loadingConfig ? null : _onChangeMachine,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Selezionata: $selectedLabel',
+            style: const TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildModeCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Tipo macchina',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 10),
-            SegmentedButton<TemperatureMode>(
-              segments: const [
-                ButtonSegment(
-                  value: TemperatureMode.hot,
-                  icon: Icon(Icons.local_fire_department),
-                  label: Text('Caldo'),
-                ),
-                ButtonSegment(
-                  value: TemperatureMode.cold,
-                  icon: Icon(Icons.ac_unit),
-                  label: Text('Freddo'),
-                ),
-              ],
-              selected: {_temperatureMode},
-              onSelectionChanged: _loadingConfig
-                  ? null
-                  : (selected) {
-                      final mode = selected.first;
-                      setState(() {
-                        _setTemperatureMode(mode);
-                      });
-                    },
-            ),
-          ],
-        ),
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Tipo macchina',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          SegmentedButton<TemperatureMode>(
+            segments: const [
+              ButtonSegment(
+                value: TemperatureMode.hot,
+                icon: Icon(Icons.local_fire_department),
+                label: Text('Caldo'),
+              ),
+              ButtonSegment(
+                value: TemperatureMode.cold,
+                icon: Icon(Icons.ac_unit),
+                label: Text('Freddo'),
+              ),
+            ],
+            selected: {_temperatureMode},
+            onSelectionChanged: _loadingConfig
+                ? null
+                : (selected) {
+                    final mode = selected.first;
+                    setState(() {
+                      _setTemperatureMode(mode);
+                    });
+                  },
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildConsumablesCard() {
     if (_loadingConfig) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Center(child: CircularProgressIndicator()),
-        ),
+      return const AppSectionCard(
+        child: AppLoading(label: 'Caricamento configurazione'),
       );
     }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Serbatoi per consumabile (dosi)',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'Viene monitorato solo il fattore della macchina ${temperatureModeLabel(_temperatureMode).toLowerCase()}.',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 12),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final w = constraints.maxWidth;
-                final cross = w >= 900 ? 2 : 1;
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Serbatoi per consumabile (dosi)',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Viene monitorato solo il fattore della macchina ${temperatureModeLabel(_temperatureMode).toLowerCase()}.',
+            style: const TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final responsive = AppResponsive(constraints.maxWidth);
+              final cross = responsive.columnsFor(
+                minTileWidth: 420,
+                maxColumns: 2,
+              );
 
-                return GridView.count(
-                  crossAxisCount: cross,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: cross == 2 ? 3.2 : 2.9,
-                  children: [
-                    _buildConsumableEditorTile(factorForMode(_temperatureMode)),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
+              return GridView.count(
+                crossAxisCount: cross,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: AppSpacing.sm,
+                mainAxisSpacing: AppSpacing.sm,
+                childAspectRatio: cross == 2 ? 3.2 : 2.9,
+                children: [
+                  _buildConsumableEditorTile(factorForMode(_temperatureMode)),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -737,16 +719,16 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Theme.of(context).dividerColor),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadii.md),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      padding: const EdgeInsets.all(AppSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(consumableIcon(t), color: Colors.grey),
-              const SizedBox(width: 10),
+              Icon(consumableIcon(t), color: AppColors.muted),
+              const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
                   consumableLabel(t),
@@ -758,10 +740,13 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(
+          const SizedBox(height: AppSpacing.xs),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             children: [
-              Expanded(
+              SizedBox(
+                width: _fieldWidth(context),
                 child: TextFormField(
                   controller: _capControllers[t],
                   keyboardType: TextInputType.number,
@@ -773,8 +758,8 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
+              SizedBox(
+                width: _fieldWidth(context),
                 child: TextFormField(
                   controller: _curControllers[t],
                   keyboardType: TextInputType.number,
@@ -788,16 +773,16 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.xs),
           if (!row.isEnabled)
             const Text(
               'Fattore non attivo per questo tipo macchina.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
             )
           else
             const Text(
               'Suggerimento: imposta current = capacity dopo ricarica iniziale.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
             ),
         ],
       ),
@@ -805,9 +790,12 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
   }
 
   Widget _buildSaveBar() {
-    return Row(
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
       children: [
-        Expanded(
+        SizedBox(
+          width: _buttonWidth(context),
           child: OutlinedButton.icon(
             onPressed: (_saving || _selectedMachineId == null)
                 ? null
@@ -816,8 +804,8 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
             label: const Text('Ricarica'),
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
+        SizedBox(
+          width: _buttonWidth(context),
           child: ElevatedButton.icon(
             onPressed: (_saving || _selectedMachineId == null)
                 ? null
@@ -838,4 +826,12 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
       ],
     );
   }
+
+  double _fieldWidth(BuildContext context) => context.responsive.isCompact
+      ? context.responsive.width - (AppSpacing.md * 4)
+      : 220;
+
+  double _buttonWidth(BuildContext context) => context.responsive.isCompact
+      ? context.responsive.width - (AppSpacing.md * 2)
+      : 220;
 }

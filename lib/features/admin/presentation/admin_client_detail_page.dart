@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
 import '../../onboarding/data/customer_machine_onboarding_service.dart';
 import '../../onboarding/presentation/onboarding_dialogs.dart';
 
@@ -183,9 +184,7 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
       future: _isAdminFuture,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: AppLoading());
         }
 
         final isAdmin = snapshot.data ?? false;
@@ -245,45 +244,57 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
             future: _dataFuture,
             builder: (context, snap) {
               if (!snap.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return const AppLoading(label: 'Caricamento cliente');
               }
               final data = snap.data!;
               if (data.clientId == null) {
-                return const Center(child: Text('Cliente non trovato.'));
+                return const AppEmptyState(
+                  title: 'Cliente non trovato',
+                  icon: Icons.apartment_outlined,
+                );
               }
 
               return ListView(
-                padding: const EdgeInsets.all(16),
+                padding: context.responsive.pagePadding,
                 children: [
-                  Text(
-                    data.clientName,
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
+                  AppSectionCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          data.clientName,
+                          style: Theme.of(context).textTheme.titleLarge,
+                        ),
+                        if (data.vatNumber != null &&
+                            data.vatNumber!.trim().isNotEmpty)
+                          Text(
+                            'P.IVA: ${data.vatNumber}',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        if (data.notes != null &&
+                            data.notes!.trim().isNotEmpty) ...[
+                          const SizedBox(height: AppSpacing.sm),
+                          Text(
+                            data.notes!,
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                  if (data.vatNumber != null &&
-                      data.vatNumber!.trim().isNotEmpty)
-                    Text(
-                      'P.IVA: ${data.vatNumber}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  const SizedBox(height: 12),
-                  if (data.notes != null && data.notes!.trim().isNotEmpty)
-                    Text(
-                      data.notes!,
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: AppSpacing.md),
 
                   // KPI cliente
-                  Row(
+                  AppAdaptiveGrid(
+                    minTileWidth: 180,
+                    maxColumns: 2,
+                    childAspectRatio: 2.6,
                     children: [
                       _smallKpi(
                         context,
                         label: 'Macchine',
                         value: data.totalMachines.toString(),
                       ),
-                      const SizedBox(width: 8),
                       _smallKpi(
                         context,
                         label: 'Erogazioni',
@@ -291,24 +302,31 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpacing.lg),
 
                   Text('Sedi', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.xs),
 
-                  if (data.sites.isEmpty) const Text('Nessuna sede associata.'),
+                  if (data.sites.isEmpty)
+                    const AppEmptyState(
+                      title: 'Nessuna sede associata',
+                      icon: Icons.place_outlined,
+                    ),
                   for (final site in data.sites) _SiteCard(site: site),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: AppSpacing.lg),
 
                   Text(
                     'Macchine',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.xs),
 
                   if (data.machines.isEmpty)
-                    const Text('Nessuna macchina associata.'),
+                    const AppEmptyState(
+                      title: 'Nessuna macchina associata',
+                      icon: Icons.coffee_maker_outlined,
+                    ),
                   for (final m in data.machines) _MachineCard(machine: m),
                 ],
               );
@@ -324,26 +342,23 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
     required String label,
     required String value,
   }) {
-    return Expanded(
-      child: Card(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        elevation: 0.5,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: Theme.of(context).textTheme.bodySmall),
-              const SizedBox(height: 4),
-              Text(
-                value,
-                style: Theme.of(
-                  context,
-                ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
-              ),
-            ],
+    return AppSectionCard(
+      padding: const EdgeInsets.symmetric(
+        vertical: AppSpacing.sm,
+        horizontal: AppSpacing.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -429,8 +444,7 @@ class _SiteCard extends StatelessWidget {
     ];
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: ListTile(
         leading: const Icon(Icons.place_outlined),
         title: Text(site.name),
@@ -450,10 +464,10 @@ class _MachineCard extends StatelessWidget {
   const _MachineCard({required this.machine});
 
   Color _fillColor(double p) {
-    if (p <= 20) return Colors.red;
-    if (p <= 40) return Colors.orange;
-    if (p <= 70) return Colors.amber;
-    return Colors.green;
+    if (p <= 20) return AppColors.danger;
+    if (p <= 40) return AppColors.warning;
+    if (p <= 70) return AppColors.info;
+    return AppColors.success;
   }
 
   String _fillLabel(double p) {
@@ -468,16 +482,18 @@ class _MachineCard extends StatelessWidget {
     final color = _fillColor(machine.currentFillPercent);
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpacing.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // prima riga: codice + chip stato
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            Wrap(
+              alignment: WrapAlignment.spaceBetween,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: AppSpacing.sm,
+              runSpacing: AppSpacing.xs,
               children: [
                 Text(
                   machine.code,
@@ -486,32 +502,19 @@ class _MachineCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    '${_fillLabel(machine.currentFillPercent)} (${machine.currentFillPercent.toStringAsFixed(0)}%)',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: color,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                AppStatusPill(
+                  label:
+                      '${_fillLabel(machine.currentFillPercent)} (${machine.currentFillPercent.toStringAsFixed(0)}%)',
+                  color: color,
                 ),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xxs),
             Text(
               '${machine.siteName} • ${machine.city}',
               style: const TextStyle(fontSize: 13),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xxs),
             Text(
               'Erogazioni anno: ${machine.yearlyShots}',
               style: const TextStyle(fontSize: 13),
@@ -519,7 +522,7 @@ class _MachineCard extends StatelessWidget {
             if (machine.hwSerial != null && machine.hwSerial!.trim().isNotEmpty)
               Text(
                 'HW: ${machine.hwSerial}',
-                style: const TextStyle(fontSize: 11, color: Colors.grey),
+                style: const TextStyle(fontSize: 11, color: AppColors.muted),
               ),
           ],
         ),

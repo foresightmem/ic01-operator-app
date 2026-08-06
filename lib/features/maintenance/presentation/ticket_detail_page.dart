@@ -31,6 +31,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
 import '../../public_support/presentation/public_support_page.dart';
 
 class TicketDetailPage extends StatefulWidget {
@@ -167,18 +168,18 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   Color _statusColor(String status) {
     switch (status) {
       case 'open':
-        return Colors.red;
+        return AppColors.danger;
       case 'assigned':
-        return Colors.orange;
+        return AppColors.warning;
       case 'in_progress':
-        return Colors.blue;
+        return AppColors.info;
       case 'resolved':
       case 'closed':
-        return Colors.green;
+        return AppColors.success;
       case 'cancelled':
-        return Colors.grey;
+        return AppColors.muted;
       default:
-        return Colors.grey;
+        return AppColors.muted;
     }
   }
 
@@ -229,16 +230,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
             : null,
         title: const Text('Dettaglio ticket'),
         actions: [
-          if (user != null)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Text(
-                  user.email ?? '',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ),
+          if (user != null) AppUserEmailAction(email: user.email),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -249,9 +241,12 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
         ],
       ),
       body: (_loading || _loadingRole)
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading()
           : _ticket == null
-          ? const Center(child: Text('Ticket non trovato'))
+          ? const AppEmptyState(
+              title: 'Ticket non trovato',
+              icon: Icons.confirmation_number_outlined,
+            )
           : _buildDetail(),
     );
   }
@@ -261,84 +256,121 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     final statusColor = _statusColor(t['status']);
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: context.responsive.pagePadding,
       children: [
-        // STATO
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Stato:',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-              decoration: BoxDecoration(
-                color: statusColor.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text(
-                _statusLabel(t['status']),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: statusColor,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 20),
-
-        // INFO CLIENTE
-        Text('Cliente: ${t['client_name']}'),
-        if (t['site_name'] != null) Text('Sede: ${t['site_name']}'),
-        Text('Macchina: ${t['machine_code']}'),
-        if (t['reason'] != null)
-          Text('Motivo: ${publicTicketReasonLabel(t['reason'] as String)}'),
-        const SizedBox(height: 12),
-
-        // DESCRIZIONE
-        if (t['description'] != null &&
-            (t['description'] as String).trim().isNotEmpty)
-          Column(
+        AppSectionCard(
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Descrizione:',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+              Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: AppSpacing.sm,
+                runSpacing: AppSpacing.xs,
+                children: [
+                  Text(
+                    t['client_name'] as String? ?? 'Cliente',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  AppStatusPill(
+                    label: _statusLabel(t['status']),
+                    color: statusColor,
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
-              Text(t['description'], style: const TextStyle(fontSize: 14)),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.sm),
+              _detailLine('Sede', t['site_name'] as String?),
+              _detailLine('Macchina', t['machine_code'] as String?),
+              if (t['reason'] != null)
+                _detailLine(
+                  'Motivo',
+                  publicTicketReasonLabel(t['reason'] as String),
+                ),
             ],
           ),
+        ),
+        const SizedBox(height: AppSpacing.md),
 
-        // DATA
-        Text(
-          'Aperto il: ${DateTime.parse(t['created_at']).toLocal()}'
-              .split('.')
-              .first,
-          style: const TextStyle(color: Colors.grey),
-        ),
-        if (t['resolved_at'] != null)
-          Text(
-            'Risolto il: ${DateTime.parse(t['resolved_at']).toLocal()}'
-                .split('.')
-                .first,
-            style: const TextStyle(color: Colors.grey),
+        if (t['description'] != null &&
+            (t['description'] as String).trim().isNotEmpty)
+          AppSectionCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Descrizione',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: AppSpacing.xs),
+                Text(
+                  t['description'],
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ),
           ),
-        Text(
-          'Tempo risoluzione: ${_formatDurationSeconds(t['resolution_time_seconds'])}',
-          style: const TextStyle(color: Colors.grey),
+        if (t['description'] != null &&
+            (t['description'] as String).trim().isNotEmpty)
+          const SizedBox(height: AppSpacing.md),
+
+        AppSectionCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Tempi', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: AppSpacing.xs),
+              _detailLine(
+                'Aperto il',
+                DateTime.parse(
+                  t['created_at'],
+                ).toLocal().toString().split('.').first,
+              ),
+              if (t['resolved_at'] != null)
+                _detailLine(
+                  'Risolto il',
+                  DateTime.parse(
+                    t['resolved_at'],
+                  ).toLocal().toString().split('.').first,
+                ),
+              _detailLine(
+                'Tempo risoluzione',
+                _formatDurationSeconds(t['resolution_time_seconds']),
+              ),
+            ],
+          ),
         ),
-        const SizedBox(height: 30),
+        const SizedBox(height: AppSpacing.md),
 
         // AZIONI
-        _actionLoading
-            ? const Center(child: CircularProgressIndicator())
-            : _buildActions(t),
+        AppSectionCard(
+          child: _actionLoading
+              ? const AppLoading(label: 'Aggiornamento ticket')
+              : _buildActions(t),
+        ),
       ],
+    );
+  }
+
+  Widget _detailLine(String label, String? value) {
+    final safeValue = (value ?? '').trim().isEmpty ? '-' : value!.trim();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.xxs),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: context.responsive.isCompact ? 108 : 150,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          Expanded(child: Text(safeValue)),
+        ],
+      ),
     );
   }
 
@@ -385,14 +417,14 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
     if (status == 'resolved' || status == 'closed') {
       return const Text(
         'Ticket risolto',
-        style: TextStyle(fontSize: 16, color: Colors.green),
+        style: TextStyle(fontSize: 16, color: AppColors.success),
       );
     }
 
     if (status == 'cancelled') {
       return const Text(
         'Ticket annullato',
-        style: TextStyle(fontSize: 16, color: Colors.grey),
+        style: TextStyle(fontSize: 16, color: AppColors.muted),
       );
     }
 
@@ -412,7 +444,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
 
     if (status == 'in_progress' && assignedToMe) {
       return ElevatedButton(
-        style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+        style: ElevatedButton.styleFrom(backgroundColor: AppColors.success),
         onPressed: () => _updateStatus('resolved'),
         child: const Text('Risolvi ticket'),
       );
@@ -420,7 +452,7 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
 
     return const Text(
       'Assegnato ad altro tecnico',
-      style: TextStyle(color: Colors.orange),
+      style: TextStyle(color: AppColors.warning),
     );
   }
 }

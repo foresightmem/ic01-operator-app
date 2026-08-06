@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
+
 class ResetPasswordPage extends StatefulWidget {
   const ResetPasswordPage({super.key});
 
@@ -115,117 +117,112 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Reimposta password')),
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+          padding: context.responsive.pagePadding,
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-                child: _checkingSession
-                    ? const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16.0),
-                          child: CircularProgressIndicator(),
+            constraints: BoxConstraints(
+              maxWidth: context.responsive.formMaxWidth,
+            ),
+            child: AppSectionCard(
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              child: _checkingSession
+                  ? const AppLoading()
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Imposta una nuova password',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            color: AppColors.petroleum,
+                          ),
                         ),
-                      )
-                    : Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            'Imposta una nuova password',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: colorScheme.primary,
-                            ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          'Hai richiesto il recupero della password. Inserisci la nuova password per il tuo account.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: AppColors.muted,
                           ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            'Hai richiesto il recupero della password. Inserisci la nuova password per il tuo account.',
-                            style: TextStyle(fontSize: 13, color: Colors.grey),
-                          ),
-                          const SizedBox(height: 16),
+                        ),
+                        const SizedBox(height: AppSpacing.md),
 
-                          if (_errorMessage != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8.0),
-                              child: Text(
-                                _errorMessage!,
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 13,
-                                ),
-                              ),
+                        if (_errorMessage != null)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: AppSpacing.sm,
                             ),
-
-                          if (_successMessage != null)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8.0),
-                              child: Text(
-                                _successMessage!,
-                                style: const TextStyle(
-                                  color: Colors.green,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-
-                          // Nuova password
-                          TextField(
-                            controller: _passwordController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Nuova password',
-                              prefixIcon: Icon(Icons.lock_outline),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-
-                          // Conferma password
-                          TextField(
-                            controller: _confirmController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
-                              labelText: 'Conferma password',
-                              prefixIcon: Icon(Icons.lock_outline),
+                            child: AppStatusPill(
+                              label: _errorMessage!,
+                              color: AppColors.danger,
+                              icon: Icons.error_outline,
                             ),
                           ),
 
-                          const SizedBox(height: 16),
-
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed:
-                                  _loading ||
-                                      _errorMessage?.contains(
-                                            'Link non valido',
-                                          ) ==
-                                          true
-                                  ? null
-                                  : _updatePassword,
-                              child: _loading
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text('Aggiorna password'),
+                        if (_successMessage != null)
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: AppSpacing.sm,
+                            ),
+                            child: AppStatusPill(
+                              label: _successMessage!,
+                              color: AppColors.success,
+                              icon: Icons.check_circle_outline,
                             ),
                           ),
-                        ],
-                      ),
-              ),
+
+                        // Nuova password
+                        TextField(
+                          controller: _passwordController,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Nuova password',
+                            prefixIcon: Icon(Icons.lock_outline),
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+
+                        // Conferma password
+                        TextField(
+                          controller: _confirmController,
+                          obscureText: true,
+                          decoration: const InputDecoration(
+                            labelText: 'Conferma password',
+                            prefixIcon: Icon(Icons.lock_outline),
+                          ),
+                        ),
+
+                        const SizedBox(height: AppSpacing.md),
+
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed:
+                                _loading ||
+                                    _errorMessage?.contains(
+                                          'Link non valido',
+                                        ) ==
+                                        true
+                                ? null
+                                : _updatePassword,
+                            child: _loading
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text('Aggiorna password'),
+                          ),
+                        ),
+                      ],
+                    ),
             ),
           ),
         ),

@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
 import '../../public_support/presentation/public_support_page.dart';
 
 /// ===============================================================
@@ -240,18 +241,18 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
   Color _statusColor(String status) {
     switch (status) {
       case 'open':
-        return Colors.red;
+        return AppColors.danger;
       case 'assigned':
-        return Colors.orange;
+        return AppColors.warning;
       case 'in_progress':
-        return Colors.blue;
+        return AppColors.info;
       case 'resolved':
       case 'closed':
-        return Colors.green;
+        return AppColors.success;
       case 'cancelled':
-        return Colors.grey;
+        return AppColors.muted;
       default:
-        return Colors.grey;
+        return AppColors.muted;
     }
   }
 
@@ -354,7 +355,7 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
 
     // Finché non so il ruolo, non mostro niente (così l'admin non vede bottoni attivi)
     if (_loadingRole) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: AppLoading());
     }
 
     final bool isAdmin = _role == 'admin';
@@ -370,16 +371,7 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
             : null,
         title: const Text('Manutenzioni straordinarie'),
         actions: [
-          if (user != null)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Text(
-                  user.email ?? '',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ),
+          if (user != null) AppUserEmailAction(email: user.email),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -396,12 +388,13 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting &&
                 !snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return const AppLoading();
             }
 
             if (snapshot.hasError) {
-              return Center(
-                child: Text('Errore nel caricamento: ${snapshot.error}'),
+              return AppErrorState(
+                message: 'Errore nel caricamento: ${snapshot.error}',
+                onRetry: _refresh,
               );
             }
 
@@ -410,21 +403,23 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
 
             if (tickets.isEmpty) {
               return ListView(
-                padding: const EdgeInsets.all(16),
+                padding: context.responsive.pagePadding,
                 children: [
                   if (isAdmin) _buildAdminFilters(rawTickets),
-                  const SizedBox(height: 24),
-                  const Center(
-                    child: Text('Nessuna chiamata di manutenzione trovata.'),
+                  const SizedBox(height: AppSpacing.lg),
+                  const AppEmptyState(
+                    title: 'Nessuna manutenzione trovata',
+                    icon: Icons.build_outlined,
                   ),
                 ],
               );
             }
 
             return ListView.separated(
-              padding: const EdgeInsets.all(16),
+              padding: context.responsive.pagePadding,
               itemCount: tickets.length + (isAdmin ? 1 : 0),
-              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              separatorBuilder: (context, index) =>
+                  const SizedBox(height: AppSpacing.sm),
               itemBuilder: (context, index) {
                 if (isAdmin && index == 0) {
                   return _buildAdminFilters(rawTickets);
@@ -439,51 +434,44 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
 
                 return Card(
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(AppRadii.md),
                     onTap: () {
                       // Admin può aprire il dettaglio ma in sola lettura
                       context.push('/maintenance/${t.ticketId}');
                     },
                     child: Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(AppSpacing.md),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // CLIENTE + STATO
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: AppSpacing.sm,
+                            runSpacing: AppSpacing.xs,
                             children: [
-                              Expanded(
+                              ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  minWidth: 160,
+                                  maxWidth: 520,
+                                ),
                                 child: Text(
                                   t.clientName,
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
                                 ),
                               ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 4,
-                                  horizontal: 8,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: statusColor.withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(999),
-                                ),
-                                child: Text(
-                                  _statusLabel(t.status),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: statusColor,
-                                  ),
-                                ),
+                              AppStatusPill(
+                                label: _statusLabel(t.status),
+                                color: statusColor,
                               ),
                             ],
                           ),
 
-                          const SizedBox(height: 4),
+                          const SizedBox(height: AppSpacing.xs),
 
                           // SEDE + MACCHINA
                           Text(
@@ -491,10 +479,10 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
                               if (t.siteName != null) t.siteName!,
                               'Macchina: ${t.machineCode}',
                             ].join(' • '),
-                            style: const TextStyle(fontSize: 13),
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
 
-                          const SizedBox(height: 8),
+                          const SizedBox(height: AppSpacing.xs),
 
                           // DESCRIZIONE
                           if (t.description != null &&
@@ -535,17 +523,20 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
                               ),
                           ],
 
-                          const SizedBox(height: 10),
+                          const SizedBox(height: AppSpacing.sm),
 
                           // FOOTER: data + azione
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            spacing: AppSpacing.sm,
+                            runSpacing: AppSpacing.xs,
                             children: [
                               Text(
                                 'Aperto il ${_formatDate(t.createdAt)}',
                                 style: const TextStyle(
                                   fontSize: 11,
-                                  color: Colors.grey,
+                                  color: AppColors.muted,
                                 ),
                               ),
                               _buildActionsForTicket(
@@ -588,7 +579,7 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
       if (ticket.status == 'closed') {
         return const Text(
           'Ticket chiuso',
-          style: TextStyle(fontSize: 12, color: Colors.green),
+          style: TextStyle(fontSize: 12, color: AppColors.success),
         );
       }
 
@@ -598,7 +589,7 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: Colors.green,
+            color: AppColors.success,
           ),
         );
       }
@@ -606,13 +597,13 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
       if (isUnassigned) {
         return const Text(
           'Non assegnato',
-          style: TextStyle(fontSize: 12, color: Colors.grey),
+          style: TextStyle(fontSize: 12, color: AppColors.muted),
         );
       }
 
       return const Text(
         'Assegnato ad altro tecnico',
-        style: TextStyle(fontSize: 12, color: Colors.orange),
+        style: TextStyle(fontSize: 12, color: AppColors.warning),
       );
     }
 
@@ -623,7 +614,7 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w600,
-          color: Colors.green,
+          color: AppColors.success,
         ),
       );
     }
@@ -637,7 +628,7 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
 
     return const Text(
       'Assegnato ad altro tecnico',
-      style: TextStyle(fontSize: 12, color: Colors.orange),
+      style: TextStyle(fontSize: 12, color: AppColors.warning),
     );
   }
 
@@ -651,114 +642,113 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
             'Non assegnato',
     }.toList()..sort();
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Filtri ticket',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: [
-                _FilterDropdown(
-                  label: 'Stato',
-                  value: _statusFilter,
-                  items: const {
-                    'all': 'Tutti',
-                    'open': 'Aperti',
-                    'assigned': 'Assegnati',
-                    'in_progress': 'In corso',
-                    'resolved': 'Risolti',
-                    'closed': 'Chiusi storico',
-                    'cancelled': 'Annullati',
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Filtri ticket', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              _FilterDropdown(
+                label: 'Stato',
+                value: _statusFilter,
+                items: const {
+                  'all': 'Tutti',
+                  'open': 'Aperti',
+                  'assigned': 'Assegnati',
+                  'in_progress': 'In corso',
+                  'resolved': 'Risolti',
+                  'closed': 'Chiusi storico',
+                  'cancelled': 'Annullati',
+                },
+                onChanged: (value) =>
+                    setState(() => _statusFilter = value ?? 'all'),
+              ),
+              _FilterDropdown(
+                label: 'Motivo',
+                value: _reasonFilter,
+                items: const {
+                  'all': 'Tutti',
+                  'out_of_stock': 'Scorte finite',
+                  'malfunction': 'Malfunzionamento',
+                },
+                onChanged: (value) =>
+                    setState(() => _reasonFilter = value ?? 'all'),
+              ),
+              _FilterDropdown(
+                label: 'Cliente',
+                value: _clientFilter,
+                items: {
+                  'all': 'Tutti',
+                  for (final client in clients) client: client,
+                },
+                onChanged: (value) =>
+                    setState(() => _clientFilter = value ?? 'all'),
+              ),
+              _FilterDropdown(
+                label: 'Operatore',
+                value: _operatorFilter,
+                items: {
+                  'all': 'Tutti',
+                  for (final operator in operators) operator: operator,
+                },
+                onChanged: (value) =>
+                    setState(() => _operatorFilter = value ?? 'all'),
+              ),
+              _FilterDropdown(
+                label: 'Periodo',
+                value: _periodFilter,
+                items: const {
+                  'all': 'Sempre',
+                  '7': 'Ultimi 7 giorni',
+                  '30': 'Ultimi 30 giorni',
+                  '90': 'Ultimi 90 giorni',
+                },
+                onChanged: (value) =>
+                    setState(() => _periodFilter = value ?? 'all'),
+              ),
+              SizedBox(
+                width: _filterWidth(context),
+                child: DropdownButtonFormField<_TicketSortMode>(
+                  initialValue: _sortMode,
+                  decoration: const InputDecoration(labelText: 'Ordina per'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: _TicketSortMode.newest,
+                      child: Text('Apertura recente'),
+                    ),
+                    DropdownMenuItem(
+                      value: _TicketSortMode.oldest,
+                      child: Text('Apertura meno recente'),
+                    ),
+                    DropdownMenuItem(
+                      value: _TicketSortMode.resolutionDesc,
+                      child: Text('Risoluzione maggiore'),
+                    ),
+                    DropdownMenuItem(
+                      value: _TicketSortMode.resolutionAsc,
+                      child: Text('Risoluzione minore'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) setState(() => _sortMode = value);
                   },
-                  onChanged: (value) =>
-                      setState(() => _statusFilter = value ?? 'all'),
                 ),
-                _FilterDropdown(
-                  label: 'Motivo',
-                  value: _reasonFilter,
-                  items: const {
-                    'all': 'Tutti',
-                    'out_of_stock': 'Scorte finite',
-                    'malfunction': 'Malfunzionamento',
-                  },
-                  onChanged: (value) =>
-                      setState(() => _reasonFilter = value ?? 'all'),
-                ),
-                _FilterDropdown(
-                  label: 'Cliente',
-                  value: _clientFilter,
-                  items: {
-                    'all': 'Tutti',
-                    for (final client in clients) client: client,
-                  },
-                  onChanged: (value) =>
-                      setState(() => _clientFilter = value ?? 'all'),
-                ),
-                _FilterDropdown(
-                  label: 'Operatore',
-                  value: _operatorFilter,
-                  items: {
-                    'all': 'Tutti',
-                    for (final operator in operators) operator: operator,
-                  },
-                  onChanged: (value) =>
-                      setState(() => _operatorFilter = value ?? 'all'),
-                ),
-                _FilterDropdown(
-                  label: 'Periodo',
-                  value: _periodFilter,
-                  items: const {
-                    'all': 'Sempre',
-                    '7': 'Ultimi 7 giorni',
-                    '30': 'Ultimi 30 giorni',
-                    '90': 'Ultimi 90 giorni',
-                  },
-                  onChanged: (value) =>
-                      setState(() => _periodFilter = value ?? 'all'),
-                ),
-                SizedBox(
-                  width: 220,
-                  child: DropdownButtonFormField<_TicketSortMode>(
-                    initialValue: _sortMode,
-                    decoration: const InputDecoration(labelText: 'Ordina per'),
-                    items: const [
-                      DropdownMenuItem(
-                        value: _TicketSortMode.newest,
-                        child: Text('Apertura recente'),
-                      ),
-                      DropdownMenuItem(
-                        value: _TicketSortMode.oldest,
-                        child: Text('Apertura meno recente'),
-                      ),
-                      DropdownMenuItem(
-                        value: _TicketSortMode.resolutionDesc,
-                        child: Text('Risoluzione maggiore'),
-                      ),
-                      DropdownMenuItem(
-                        value: _TicketSortMode.resolutionAsc,
-                        child: Text('Risoluzione minore'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) setState(() => _sortMode = value);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
+
+  double _filterWidth(BuildContext context) => context.responsive.isCompact
+      ? context.responsive.width - (AppSpacing.md * 4)
+      : 220;
 }
 
 class _FilterDropdown extends StatelessWidget {
@@ -777,9 +767,12 @@ class _FilterDropdown extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final safeValue = items.containsKey(value) ? value : 'all';
+    final width = context.responsive.isCompact
+        ? context.responsive.width - (AppSpacing.md * 4)
+        : 220.0;
 
     return SizedBox(
-      width: 220,
+      width: width,
       child: DropdownButtonFormField<String>(
         initialValue: safeValue,
         decoration: InputDecoration(labelText: label),

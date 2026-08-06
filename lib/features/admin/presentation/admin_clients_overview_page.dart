@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
 import '../../onboarding/presentation/onboarding_dialogs.dart';
 
 class AdminClientsOverviewPage extends StatefulWidget {
@@ -157,9 +158,7 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
       future: _isAdminFuture,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: AppLoading());
         }
         final isAdmin = snapshot.data ?? false;
         if (!isAdmin) {
@@ -207,11 +206,14 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
             future: _dataFuture,
             builder: (context, snap) {
               if (!snap.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return const AppLoading(label: 'Caricamento clienti');
               }
               final data = snap.data!;
               if (data.groups.isEmpty) {
-                return const Center(child: Text('Nessun cliente trovato.'));
+                return const AppEmptyState(
+                  title: 'Nessun cliente trovato',
+                  icon: Icons.apartment_outlined,
+                );
               }
 
               // lista città per filtro
@@ -230,11 +232,10 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
               );
 
               return ListView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: context.responsive.pagePadding,
                 itemCount: filteredGroups.length + 1,
                 itemBuilder: (context, index) {
                   if (index == 0) {
-                    // CARD FILTRI
                     return _FiltersCard(
                       searchQuery: _searchQuery,
                       onSearchChanged: (value) {
@@ -260,10 +261,7 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
 
                   final group = filteredGroups[index - 1];
                   return Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    margin: const EdgeInsets.only(bottom: 12),
+                    margin: const EdgeInsets.only(bottom: AppSpacing.sm),
                     child: ExpansionTile(
                       tilePadding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -407,83 +405,85 @@ class _FiltersCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            TextField(
-              decoration: const InputDecoration(
-                labelText: 'Cerca cliente',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-              ),
-              onChanged: onSearchChanged,
+    return AppSectionCard(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        children: [
+          TextField(
+            decoration: const InputDecoration(
+              labelText: 'Cerca cliente',
+              prefixIcon: Icon(Icons.search),
+              isDense: true,
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: cityFilter,
-                    decoration: const InputDecoration(
-                      labelText: 'Città',
-                      isDense: true,
-                    ),
-                    items: cityOptions
-                        .map((c) => DropdownMenuItem(value: c, child: Text(c)))
-                        .toList(),
-                    onChanged: onCityChanged,
+            onChanged: onSearchChanged,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              SizedBox(
+                width: _fieldWidth(context),
+                child: DropdownButtonFormField<String>(
+                  initialValue: cityFilter,
+                  decoration: const InputDecoration(
+                    labelText: 'Città',
+                    isDense: true,
                   ),
+                  items: cityOptions
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                      .toList(),
+                  onChanged: onCityChanged,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButtonFormField<_ClientSortMode>(
-                    initialValue: sortMode,
-                    decoration: const InputDecoration(
-                      labelText: 'Ordina per',
-                      isDense: true,
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: _ClientSortMode.shotsDesc,
-                        child: Text('Erogazioni (↓)'),
-                      ),
-                      DropdownMenuItem(
-                        value: _ClientSortMode.machinesDesc,
-                        child: Text('Macchine (↓)'),
-                      ),
-                      DropdownMenuItem(
-                        value: _ClientSortMode.nameAsc,
-                        child: Text('Nome (A-Z)'),
-                      ),
-                    ],
-                    onChanged: onSortModeChanged,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            SwitchListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: const Text(
-                'Solo clienti con almeno una macchina',
-                style: TextStyle(fontSize: 13),
               ),
-              value: onlyWithMachines,
-              onChanged: onOnlyWithMachinesChanged,
-              activeThumbColor: theme.colorScheme.primary,
+              SizedBox(
+                width: _fieldWidth(context),
+                child: DropdownButtonFormField<_ClientSortMode>(
+                  initialValue: sortMode,
+                  decoration: const InputDecoration(
+                    labelText: 'Ordina per',
+                    isDense: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: _ClientSortMode.shotsDesc,
+                      child: Text('Erogazioni (↓)'),
+                    ),
+                    DropdownMenuItem(
+                      value: _ClientSortMode.machinesDesc,
+                      child: Text('Macchine (↓)'),
+                    ),
+                    DropdownMenuItem(
+                      value: _ClientSortMode.nameAsc,
+                      child: Text('Nome (A-Z)'),
+                    ),
+                  ],
+                  onChanged: onSortModeChanged,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Solo clienti con almeno una macchina',
+              style: TextStyle(fontSize: 13),
             ),
-          ],
-        ),
+            value: onlyWithMachines,
+            onChanged: onOnlyWithMachinesChanged,
+            activeThumbColor: AppColors.petroleum,
+          ),
+        ],
       ),
     );
   }
+
+  double _fieldWidth(BuildContext context) => context.responsive.isCompact
+      ? context.responsive.width - (AppSpacing.md * 4)
+      : 260;
 }
 
 class _AdminClientsData {

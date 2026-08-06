@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
+
 class AdminCoveragePlanPage extends StatefulWidget {
   final String unavailabilityId;
 
@@ -231,8 +233,11 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
       widgets.add(
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          color: Colors.grey.shade100,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          color: AppColors.surfaceAlt,
           child: Text(
             key,
             style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
@@ -245,39 +250,60 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
         final info = r.machineInfo;
 
         widgets.add(
-          ListTile(
-            title: Text(
-              info == null ? 'Macchina' : 'Macchina ${info.code}',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            subtitle: info == null
-                ? const Text('Cliente: N/D')
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Sito: ${info.siteName ?? 'N/D'}'),
-                      Text('Città: ${info.city ?? 'N/D'}'),
-                    ],
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            child: Wrap(
+              spacing: AppSpacing.md,
+              runSpacing: AppSpacing.sm,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: context.responsive.isCompact
+                      ? context.responsive.width - (AppSpacing.md * 4)
+                      : 360,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      info == null ? 'Macchina' : 'Macchina ${info.code}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: info == null
+                        ? const Text('Cliente: N/D')
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Sito: ${info.siteName ?? 'N/D'}'),
+                              Text('Città: ${info.city ?? 'N/D'}'),
+                            ],
+                          ),
                   ),
-            trailing: SizedBox(
-              width: 260,
-              child: DropdownButtonFormField<String>(
-                initialValue: r.newOperatorId,
-                decoration: const InputDecoration(
-                  labelText: 'Assegna a',
-                  isDense: true,
                 ),
-                items: operators
-                    .where((o) => o.id != absentOperatorId)
-                    .map(
-                      (o) => DropdownMenuItem(value: o.id, child: Text(o.name)),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value == null) return;
-                  _updateRowOperator(r, value);
-                },
-              ),
+                SizedBox(
+                  width: context.responsive.isCompact
+                      ? context.responsive.width - (AppSpacing.md * 4)
+                      : 280,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: r.newOperatorId,
+                    decoration: const InputDecoration(
+                      labelText: 'Assegna a',
+                      isDense: true,
+                    ),
+                    items: operators
+                        .where((o) => o.id != absentOperatorId)
+                        .map(
+                          (o) => DropdownMenuItem(
+                            value: o.id,
+                            child: Text(o.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      _updateRowOperator(r, value);
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -298,9 +324,7 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
       future: _isAdminFuture,
       builder: (context, snap) {
         if (!snap.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: AppLoading());
         }
         final isAdmin = snap.data ?? false;
 
@@ -321,16 +345,7 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
               onPressed: () => context.go('/admin/coverage'),
             ),
             actions: [
-              if (user != null)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Text(
-                      user.email ?? '',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ),
+              if (user != null) AppUserEmailAction(email: user.email),
               IconButton(
                 icon: const Icon(Icons.logout),
                 onPressed: () async {
@@ -341,31 +356,28 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
             ],
           ),
           body: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const AppLoading()
               : (_absence == null)
-              ? const Center(child: Text('Assenza non trovata.'))
+              ? const AppEmptyState(
+                  title: 'Assenza non trovata',
+                  icon: Icons.event_busy_outlined,
+                )
               : Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 900),
+                  child: AppPage(
+                    maxWidth: context.responsive.adminMaxWidth,
                     child: ListView(
-                      padding: const EdgeInsets.all(16),
+                      padding: EdgeInsets.zero,
                       children: [
                         _AbsenceHeader(absence: _absence!),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: AppSpacing.sm),
                         if (_rows.isEmpty)
-                          const Card(
-                            child: Padding(
-                              padding: EdgeInsets.all(16),
-                              child: Text(
-                                'Nessuna macchina da riassegnare (o piano già generato/confirmato).',
-                              ),
+                          const AppSectionCard(
+                            child: Text(
+                              'Nessuna macchina da riassegnare (o piano già generato/confirmato).',
                             ),
                           )
                         else
                           Card(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
                             child: Column(
                               children: _buildGroupedRows(
                                 context,
@@ -375,7 +387,7 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
                               ),
                             ),
                           ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: AppSpacing.md),
                         FilledButton.icon(
                           onPressed: _saving ? null : _confirmPlan,
                           icon: _saving
@@ -389,10 +401,13 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
                               : const Icon(Icons.check),
                           label: const Text('Conferma piano'),
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: AppSpacing.xs),
                         const Text(
                           'Nota: dopo la conferma, le assegnazioni temporanee vengono applicate agli operatori durante il periodo selezionato, senza modificare l’assegnazione “di default” delle macchine.',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.muted,
+                          ),
                         ),
                       ],
                     ),
@@ -410,25 +425,22 @@ class _AbsenceHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Assenza registrata',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Periodo: ${absence.startDate.toIso8601String().substring(0, 10)} → ${absence.endDate.toIso8601String().substring(0, 10)}',
-            ),
-            if (absence.reason != null && absence.reason!.trim().isNotEmpty)
-              Text('Motivo: ${absence.reason}'),
-          ],
-        ),
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Assenza registrata',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Periodo: ${absence.startDate.toIso8601String().substring(0, 10)} → ${absence.endDate.toIso8601String().substring(0, 10)}',
+          ),
+          if (absence.reason != null && absence.reason!.trim().isNotEmpty)
+            Text('Motivo: ${absence.reason}'),
+        ],
       ),
     );
   }
