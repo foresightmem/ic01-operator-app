@@ -7,6 +7,12 @@ App Flutter per operatori, tecnici e admin IC01/GEDA.
 La prima parte dell'onboarding operativo e' documentata in
 [`docs/customer-machine-onboarding.md`](docs/customer-machine-onboarding.md).
 
+La specifica tecnica per il futuro collegamento della calibrazione firmware
+all'app via Bluetooth Low Energy e' documentata in
+[`docs/ble-calibration-audit.md`](docs/ble-calibration-audit.md). I gap
+operativi destinati al team firmware sono raccolti in
+[`docs/GAP_FIRMWARE.md`](docs/GAP_FIRMWARE.md).
+
 Include creazione cliente con sede principale, aggiunta sedi, creazione macchina
 con tipo `hot`/`cold`, capacita' dosi monitorate su
 `machine_consumables.capacity_units` e associazione macchina -> sede -> cliente
