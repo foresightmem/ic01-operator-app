@@ -587,6 +587,7 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             DropdownButtonFormField<String>(
+              isExpanded: true,
               initialValue: _selectedClientId,
               decoration: const InputDecoration(
                 labelText: 'Cliente',
@@ -596,7 +597,7 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
                   .map(
                     (client) => DropdownMenuItem(
                       value: client.id,
-                      child: Text(client.name),
+                      child: Text(client.name, overflow: TextOverflow.ellipsis),
                     ),
                   )
                   .toList(),
@@ -616,6 +617,7 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
             const SizedBox(height: AppSpacing.sm),
             DropdownButtonFormField<String>(
               key: ValueKey('${_selectedClientId}_${_sites.length}'),
+              isExpanded: true,
               initialValue: _selectedSiteId,
               decoration: InputDecoration(
                 labelText: 'Sede',
@@ -634,7 +636,7 @@ class _CreateMachineDialogState extends State<_CreateMachineDialog> {
                   .map(
                     (site) => DropdownMenuItem(
                       value: site.id,
-                      child: Text(site.name),
+                      child: Text(site.name, overflow: TextOverflow.ellipsis),
                     ),
                   )
                   .toList(),

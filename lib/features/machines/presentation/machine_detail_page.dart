@@ -1,6 +1,7 @@
 // lib/features/machines/presentation/machine_detail_page.dart
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/ui/app_design_system.dart';
@@ -356,6 +357,8 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
                 children: [
                   _buildInfoCard(header),
                   const SizedBox(height: AppSpacing.md),
+                  _buildCalibrationCard(header),
+                  const SizedBox(height: AppSpacing.md),
                   _buildConsumablesGrid(),
                   const SizedBox(height: AppSpacing.md),
                   if (_refillError != null)
@@ -395,6 +398,51 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
           ],
           const SizedBox(height: AppSpacing.xxs),
           _infoRow('Codice macchina', header.machineCode),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalibrationCard(MachineHeaderModel header) {
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.petroleumSoft,
+              borderRadius: BorderRadius.circular(AppRadii.md),
+            ),
+            child: const Icon(Icons.tune, color: AppColors.petroleum),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Calibrazione',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  'BLE IC01',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          FilledButton.icon(
+            onPressed: () =>
+                context.push('/machines/${header.machineId}/calibration'),
+            icon: const Icon(Icons.bluetooth_searching),
+            label: const Text('Apri'),
+          ),
         ],
       ),
     );

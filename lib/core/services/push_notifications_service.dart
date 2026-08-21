@@ -50,74 +50,87 @@ class PushNotificationsService {
       return;
     }
 
-    await Firebase.initializeApp();
-    _messaging ??= FirebaseMessaging.instance;
-    _prefs ??= await SharedPreferences.getInstance();
-    await _initLocalNotifications();
-    await _requestPermissions();
-    await _messaging?.setForegroundNotificationPresentationOptions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    _deviceId ??= _prefs?.getString('push_device_id');
-    if (_deviceId == null) {
-      _deviceId = _uuid.v4();
-      await _prefs?.setString('push_device_id', _deviceId!);
-    }
-
-    final token = await _messaging?.getToken();
-    _lastToken = token;
-    // Debug utile per verificare token/device.
-    print('[FCM] token: $token');
-    print('[FCM] deviceId: $_deviceId');
-    if (token != null) {
-      await _upsertToken(token);
-    }
-
-    _messaging?.onTokenRefresh.listen((newToken) async {
-      _lastToken = newToken;
-      print('[FCM] token refresh: $newToken');
-      await _upsertToken(newToken);
-    });
-
-    FirebaseMessaging.onMessage.listen((message) {
-      final notification = message.notification;
-      final title = notification?.title ?? (message.data['title'] as String?);
-      final body = notification?.body ?? (message.data['body'] as String?);
-      if (title == null && body == null) return;
-
-      _localNotifications.show(
-        message.hashCode,
-        title,
-        body,
-        NotificationDetails(
-          android: AndroidNotificationDetails(
-            _androidChannel.id,
-            _androidChannel.name,
-            channelDescription: _androidChannel.description,
-            importance: Importance.high,
-            priority: Priority.high,
-            icon: notification?.android?.smallIcon ?? 'ic_launcher',
-          ),
-          iOS: const DarwinNotificationDetails(),
-        ),
-        payload: message.data['route'] as String? ?? '/dashboard',
+    try {
+      await Firebase.initializeApp().timeout(const Duration(seconds: 8));
+      _messaging ??= FirebaseMessaging.instance;
+      _prefs ??= await SharedPreferences.getInstance().timeout(
+        const Duration(seconds: 4),
       );
-    });
+      await _initLocalNotifications().timeout(const Duration(seconds: 4));
+      await _requestPermissions().timeout(const Duration(seconds: 8));
+      await _messaging
+          ?.setForegroundNotificationPresentationOptions(
+            alert: true,
+            badge: true,
+            sound: true,
+          )
+          .timeout(const Duration(seconds: 4));
+      _deviceId ??= _prefs?.getString('push_device_id');
+      if (_deviceId == null) {
+        _deviceId = _uuid.v4();
+        await _prefs?.setString('push_device_id', _deviceId!);
+      }
 
-    FirebaseMessaging.onMessageOpenedApp.listen((message) {
-      final route = message.data['route'] as String? ?? '/dashboard';
-      appRouter.go(route);
-    });
+      final token = await _messaging?.getToken().timeout(
+        const Duration(seconds: 8),
+        onTimeout: () => null,
+      );
+      _lastToken = token;
+      debugPrint('[FCM] token: $token');
+      debugPrint('[FCM] deviceId: $_deviceId');
+      if (token != null) {
+        await _upsertToken(token).timeout(const Duration(seconds: 8));
+      }
 
-    final initialMessage = await _messaging?.getInitialMessage();
-    if (initialMessage != null) {
-      final route = initialMessage.data['route'] as String? ?? '/dashboard';
-      appRouter.go(route);
+      _messaging?.onTokenRefresh.listen((newToken) async {
+        _lastToken = newToken;
+        debugPrint('[FCM] token refresh: $newToken');
+        await _upsertToken(newToken);
+      });
+
+      FirebaseMessaging.onMessage.listen((message) {
+        final notification = message.notification;
+        final title = notification?.title ?? (message.data['title'] as String?);
+        final body = notification?.body ?? (message.data['body'] as String?);
+        if (title == null && body == null) return;
+
+        _localNotifications.show(
+          message.hashCode,
+          title,
+          body,
+          NotificationDetails(
+            android: AndroidNotificationDetails(
+              _androidChannel.id,
+              _androidChannel.name,
+              channelDescription: _androidChannel.description,
+              importance: Importance.high,
+              priority: Priority.high,
+              icon: notification?.android?.smallIcon ?? 'ic_launcher',
+            ),
+            iOS: const DarwinNotificationDetails(),
+          ),
+          payload: message.data['route'] as String? ?? '/dashboard',
+        );
+      });
+
+      FirebaseMessaging.onMessageOpenedApp.listen((message) {
+        final route = message.data['route'] as String? ?? '/dashboard';
+        appRouter.go(route);
+      });
+
+      final initialMessage = await _messaging?.getInitialMessage().timeout(
+        const Duration(seconds: 4),
+        onTimeout: () => null,
+      );
+      if (initialMessage != null) {
+        final route = initialMessage.data['route'] as String? ?? '/dashboard';
+        appRouter.go(route);
+      }
+    } catch (error) {
+      debugPrint('[FCM] init skipped: $error');
+    } finally {
+      _initialized = true;
     }
-
-    _initialized = true;
   }
 
   Future<void> syncTokenForCurrentUser() async {

@@ -434,7 +434,7 @@ class _DashboardPageState extends State<DashboardPage> {
       child: AppAdaptiveGrid(
         minTileWidth: 160,
         maxColumns: 3,
-        childAspectRatio: 2.2,
+        childAspectRatio: 1.8,
         children: [
           AppSectionCard(
             child: _buildKpiBox(

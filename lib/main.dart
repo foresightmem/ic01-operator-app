@@ -16,6 +16,8 @@
 /// ===============================================================
 library;
 
+import 'dart:async';
+
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -38,7 +40,7 @@ void main() async {
     anonKey: AppEnv.supabaseAnonKey,
   );
 
-  await PushNotificationsService.instance.init();
-
   runApp(const ProviderScope(child: IC01App()));
+
+  unawaited(PushNotificationsService.instance.init());
 }

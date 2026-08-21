@@ -38,6 +38,7 @@ import 'package:ic01_operator_app/features/admin/presentation/admin_machine_conf
 import 'package:ic01_operator_app/models/admin_event.dart';
 
 import '../features/auth/presentation/login_page.dart';
+import '../features/calibration/presentation/calibration_page.dart';
 import '../features/auth/presentation/reset_password_page.dart';
 import '../features/dashboard/presentation/dashboard_page.dart';
 import '../features/clients/presentation/client_detail_page.dart';
@@ -205,6 +206,13 @@ final GoRouter appRouter = GoRouter(
           builder: (context, state) {
             final machineId = state.pathParameters['machineId']!;
             return MachineDetailPage(machineId: machineId);
+          },
+        ),
+        GoRoute(
+          path: '/machines/:machineId/calibration',
+          builder: (context, state) {
+            final machineId = state.pathParameters['machineId']!;
+            return CalibrationPage(machineId: machineId);
           },
         ),
         GoRoute(
