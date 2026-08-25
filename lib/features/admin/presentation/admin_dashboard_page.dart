@@ -7,6 +7,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import '../../../core/ui/app_design_system.dart';
+import '../data/refill_productivity_repository.dart';
+import '../domain/refill_productivity_kpi.dart';
 import '../../onboarding/presentation/onboarding_dialogs.dart';
 
 class AdminDashboardPage extends StatefulWidget {
@@ -19,7 +21,9 @@ class AdminDashboardPage extends StatefulWidget {
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
   late Future<bool> _isAdminFuture;
   Future<_AdminKpiData>? _kpiFuture;
+  Future<RefillProductivityKpi>? _refillProductivityFuture;
   int _ticketKpiPeriodDays = 30;
+  int _refillKpiPeriodDays = 30;
 
   @override
   void initState() {
@@ -382,6 +386,12 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     );
   }
 
+  Future<RefillProductivityKpi> _loadRefillProductivityKpi() {
+    return RefillProductivityRepository(
+      Supabase.instance.client,
+    ).load(periodDays: _refillKpiPeriodDays);
+  }
+
   int? _resolutionSecondsFromTicket(Map<String, dynamic> ticket) {
     final stored = (ticket['resolution_time_seconds'] as num?)?.toInt();
     if (stored != null && stored >= 0) return stored;
@@ -444,6 +454,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
               setState(() {
                 _isAdminFuture = _checkIfAdmin();
                 _kpiFuture = null;
+                _refillProductivityFuture = null;
               });
             },
           );
@@ -485,6 +496,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         }
 
         _kpiFuture ??= _loadKpis();
+        _refillProductivityFuture ??= _loadRefillProductivityKpi();
         final user = Supabase.instance.client.auth.currentUser;
 
         return Scaffold(
@@ -671,19 +683,38 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
                       const SizedBox(height: 24),
 
-                      _TicketResolutionKpiSection(
-                        periodDays: _ticketKpiPeriodDays,
-                        onPeriodChanged: (days) {
-                          setState(() {
-                            _ticketKpiPeriodDays = days;
-                            _kpiFuture = _loadKpis();
-                          });
-                        },
-                        averageSeconds: kpi.averageResolutionSeconds,
-                        medianSeconds: kpi.medianResolutionSeconds,
-                        byOperator: kpi.resolutionByOperator,
-                        byClient: kpi.resolutionByClient,
-                        onOpenTickets: () => context.go('/maintenance'),
+                      _AdminKpiSectionsLayout(
+                        ticketSection: _TicketResolutionKpiSection(
+                          periodDays: _ticketKpiPeriodDays,
+                          onPeriodChanged: (days) {
+                            setState(() {
+                              _ticketKpiPeriodDays = days;
+                              _kpiFuture = _loadKpis();
+                            });
+                          },
+                          averageSeconds: kpi.averageResolutionSeconds,
+                          medianSeconds: kpi.medianResolutionSeconds,
+                          byOperator: kpi.resolutionByOperator,
+                          byClient: kpi.resolutionByClient,
+                          onOpenTickets: () => context.go('/maintenance'),
+                        ),
+                        refillSection: _RefillProductivityKpiSection(
+                          periodDays: _refillKpiPeriodDays,
+                          future: _refillProductivityFuture!,
+                          onPeriodChanged: (days) {
+                            setState(() {
+                              _refillKpiPeriodDays = days;
+                              _refillProductivityFuture =
+                                  _loadRefillProductivityKpi();
+                            });
+                          },
+                          onRetry: () {
+                            setState(() {
+                              _refillProductivityFuture =
+                                  _loadRefillProductivityKpi();
+                            });
+                          },
+                        ),
                       ),
 
                       const SizedBox(height: 24),
@@ -842,6 +873,63 @@ String formatResolutionDuration(int? seconds) {
   return '${days} g ${restHours} h';
 }
 
+String _formatInt(int value) {
+  final raw = value.toString();
+  final buffer = StringBuffer();
+  for (var i = 0; i < raw.length; i++) {
+    final remaining = raw.length - i;
+    buffer.write(raw[i]);
+    if (remaining > 1 && remaining % 3 == 1) {
+      buffer.write('.');
+    }
+  }
+  return buffer.toString();
+}
+
+String _formatRate(double? value) {
+  if (value == null || value.isNaN || value.isInfinite) {
+    return 'Dati insufficienti';
+  }
+  return '${value.round()} dosi/h';
+}
+
+String _formatPercent(double? value) {
+  if (value == null || value.isNaN || value.isInfinite) {
+    return 'Dati insufficienti';
+  }
+  return '${(value * 100).round()}%';
+}
+
+String _formatSignedPercent(double value) {
+  if (value.isNaN || value.isInfinite) return 'N/D';
+  final rounded = value.round();
+  if (rounded > 0) return '+$rounded%';
+  return '$rounded%';
+}
+
+String _formatHours(double hours) {
+  if (hours <= 0 || hours.isNaN || hours.isInfinite) return '0 min';
+  final totalMinutes = (hours * 60).round();
+  final wholeHours = totalMinutes ~/ 60;
+  final minutes = totalMinutes % 60;
+  if (wholeHours == 0) return '$minutes min';
+  if (minutes == 0) return '${wholeHours} h';
+  return '${wholeHours} h ${minutes} min';
+}
+
+String _sampleQualityLabel(RefillProductivitySummary summary) {
+  final parts = <String>[];
+  if (summary.legacyWithoutQuantityCount > 0) {
+    parts.add(
+      '${summary.legacyWithoutQuantityCount} refill storici senza quantità',
+    );
+  }
+  if (summary.invalidQuantityCount > 0) {
+    parts.add('${summary.invalidQuantityCount} refill esclusi per quantità 0');
+  }
+  return 'Qualità campione: ${parts.join(', ')}.';
+}
+
 class _TicketDurationAggregate {
   final String label;
   final int ticketCount;
@@ -854,6 +942,391 @@ class _TicketDurationAggregate {
     required this.averageSeconds,
     required this.medianSeconds,
   });
+}
+
+class _KpiPeriodDropdown extends StatelessWidget {
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  const _KpiPeriodDropdown({required this.value, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return DropdownButton<int>(
+      value: value,
+      items: const [
+        DropdownMenuItem(value: 7, child: Text('7 giorni')),
+        DropdownMenuItem(value: 30, child: Text('30 giorni')),
+        DropdownMenuItem(value: 90, child: Text('90 giorni')),
+      ],
+      onChanged: (next) {
+        if (next != null) onChanged(next);
+      },
+    );
+  }
+}
+
+class _AdminKpiSectionsLayout extends StatelessWidget {
+  final Widget ticketSection;
+  final Widget refillSection;
+
+  const _AdminKpiSectionsLayout({
+    required this.ticketSection,
+    required this.refillSection,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < 980) {
+          return Column(
+            children: [
+              ticketSection,
+              const SizedBox(height: AppSpacing.md),
+              refillSection,
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: ticketSection),
+            const SizedBox(width: AppSpacing.md),
+            Expanded(child: refillSection),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _RefillProductivityKpiSection extends StatelessWidget {
+  final int periodDays;
+  final Future<RefillProductivityKpi> future;
+  final ValueChanged<int> onPeriodChanged;
+  final VoidCallback onRetry;
+
+  const _RefillProductivityKpiSection({
+    required this.periodDays,
+    required this.future,
+    required this.onPeriodChanged,
+    required this.onRetry,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: FutureBuilder<RefillProductivityKpi>(
+          future: future,
+          builder: (context, snapshot) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _RefillKpiHeader(
+                  periodDays: periodDays,
+                  onPeriodChanged: onPeriodChanged,
+                ),
+                const SizedBox(height: 12),
+                if (snapshot.hasError)
+                  _RefillKpiInlineError(error: snapshot.error, onRetry: onRetry)
+                else if (!snapshot.hasData)
+                  const SizedBox(
+                    height: 220,
+                    child: AppLoading(label: 'Caricamento KPI refill'),
+                  )
+                else
+                  _RefillKpiContent(kpi: snapshot.data!),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _RefillKpiHeader extends StatelessWidget {
+  final int periodDays;
+  final ValueChanged<int> onPeriodChanged;
+
+  const _RefillKpiHeader({
+    required this.periodDays,
+    required this.onPeriodChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            'KPI produttività refill',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ),
+        _KpiPeriodDropdown(value: periodDays, onChanged: onPeriodChanged),
+      ],
+    );
+  }
+}
+
+class _RefillKpiInlineError extends StatelessWidget {
+  final Object? error;
+  final VoidCallback onRetry;
+
+  const _RefillKpiInlineError({required this.error, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    final detail = _refillKpiErrorMessage(error);
+    if (detail != null) {
+      debugPrint('Refill productivity KPI error: $detail');
+    }
+
+    return AppEmptyState(
+      title: 'KPI refill non disponibile',
+      message: [
+        'Verifica la migration, la RPC get_refill_productivity_kpi e i permessi admin.',
+        if (detail != null) 'Dettaglio: $detail',
+      ].join('\n'),
+      icon: Icons.error_outline,
+      action: ElevatedButton.icon(
+        onPressed: onRetry,
+        icon: const Icon(Icons.refresh),
+        label: const Text('Riprova'),
+      ),
+    );
+  }
+}
+
+String? _refillKpiErrorMessage(Object? error) {
+  if (error == null) return null;
+  if (error is PostgrestException) {
+    final code = error.code;
+    final message = error.message;
+    if (code == null || code.isEmpty) return message;
+    return '$code - $message';
+  }
+
+  final raw = error.toString();
+  if (raw.isEmpty) return null;
+  return raw.length > 220 ? '${raw.substring(0, 220)}...' : raw;
+}
+
+class _RefillKpiContent extends StatelessWidget {
+  final RefillProductivityKpi kpi;
+
+  const _RefillKpiContent({required this.kpi});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!kpi.hasRefills) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.md),
+        child: Text('Nessun dato refill disponibile nel periodo selezionato.'),
+      );
+    }
+
+    final summary = kpi.summary;
+    final comparison = kpi.comparison;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: 16,
+          runSpacing: 12,
+          children: [
+            _RefillMetric(
+              label: 'Dosi refillate',
+              value: summary.refillWithQuantityCount == 0
+                  ? 'Dati insufficienti'
+                  : _formatInt(summary.totalRefilledDoses),
+              deltaPercent: comparison.dosesDeltaPercent,
+            ),
+            _RefillMetric(
+              label: 'Refill completati',
+              value: _formatInt(summary.refillCount),
+              deltaPercent: comparison.refillDeltaPercent,
+            ),
+            _RefillMetric(
+              label: 'Dosi / ora teorica',
+              value: _formatRate(summary.dosesPerTheoreticalHour),
+              deltaPercent: comparison.theoreticalProductivityDeltaPercent,
+              tooltip:
+                  'Rapporto tra dosi refillate e 6 ore teoriche per ogni giornata con almeno un refill.',
+            ),
+            _RefillMetric(
+              label: 'Dosi / ora osservata',
+              value: _formatRate(summary.dosesPerObservedHour),
+              deltaPercent: comparison.observedProductivityDeltaPercent,
+              tooltip:
+                  'Rapporto tra dosi refillate e intervallo compreso tra primo e ultimo refill della giornata.',
+            ),
+            _RefillMetric(
+              label: 'Finestra refill osservata',
+              value: _formatHours(summary.observedRefillHours),
+            ),
+            _RefillMetric(
+              label: 'Finestra refill / turno teorico',
+              value: _formatPercent(summary.observedWindowUtilization),
+            ),
+            _RefillMetric(
+              label: 'Capacità teorica residua',
+              value: _formatHours(summary.theoreticalResidualCapacityHours),
+              tooltip:
+                  'Differenza stimata tra turno teorico e finestra refill osservata.',
+            ),
+          ],
+        ),
+        if (summary.legacyWithoutQuantityCount > 0 ||
+            summary.invalidQuantityCount > 0) ...[
+          const SizedBox(height: AppSpacing.sm),
+          Text(
+            _sampleQualityLabel(summary),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+          ),
+        ],
+        const SizedBox(height: AppSpacing.md),
+        Text(
+          'Produttività per operatore',
+          style: Theme.of(context).textTheme.bodyLarge,
+        ),
+        const SizedBox(height: AppSpacing.xs),
+        if (kpi.operators.isEmpty)
+          const Text('Nessun operatore con refill nel periodo.')
+        else
+          for (final operator in kpi.operators.take(6))
+            _RefillOperatorRow(operator: operator),
+      ],
+    );
+  }
+}
+
+class _RefillMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  final double? deltaPercent;
+  final String? tooltip;
+
+  const _RefillMetric({
+    required this.label,
+    required this.value,
+    this.deltaPercent,
+    this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final labelWidget = Text(
+      label,
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+    );
+
+    return SizedBox(
+      width: 180,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (tooltip == null)
+            labelWidget
+          else
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(child: labelWidget),
+                Tooltip(
+                  message: tooltip!,
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: AppSpacing.xxs),
+                    child: Icon(
+                      Icons.info_outline,
+                      size: 14,
+                      color: AppColors.muted,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          Text(
+            value,
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+          ),
+          if (deltaPercent != null)
+            Text(
+              '${_formatSignedPercent(deltaPercent!)} vs periodo precedente',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: deltaPercent! >= 0
+                    ? AppColors.success
+                    : AppColors.danger,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RefillOperatorRow extends StatelessWidget {
+  final RefillProductivityOperator operator;
+
+  const _RefillOperatorRow({required this.operator});
+
+  @override
+  Widget build(BuildContext context) {
+    final delta = operator.productivityDeltaPercent;
+    final deltaLabel = delta == null ? 'N/D' : _formatSignedPercent(delta);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            operator.operatorName,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: AppSpacing.xxs),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.xxs,
+            children: [
+              Text('${_formatInt(operator.totalRefilledDoses)} dosi'),
+              Text('${operator.refillCount} refill'),
+              Text('${operator.uniqueMachineCount} macchine coinvolte'),
+              Text('${operator.activeRefillDays} giorni attivi'),
+              Text('${_formatHours(operator.observedRefillHours)} osservate'),
+              Text(_formatRate(operator.dosesPerTheoreticalHour)),
+              Text(
+                deltaLabel,
+                style: TextStyle(
+                  color: delta == null
+                      ? AppColors.muted
+                      : delta >= 0
+                      ? AppColors.success
+                      : AppColors.danger,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _TicketResolutionKpiSection extends StatelessWidget {
@@ -892,16 +1365,9 @@ class _TicketResolutionKpiSection extends StatelessWidget {
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
-                DropdownButton<int>(
+                _KpiPeriodDropdown(
                   value: periodDays,
-                  items: const [
-                    DropdownMenuItem(value: 7, child: Text('7 giorni')),
-                    DropdownMenuItem(value: 30, child: Text('30 giorni')),
-                    DropdownMenuItem(value: 90, child: Text('90 giorni')),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) onPeriodChanged(value);
-                  },
+                  onChanged: onPeriodChanged,
                 ),
               ],
             ),
