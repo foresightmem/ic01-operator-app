@@ -95,11 +95,38 @@ serve(async (req) => {
       return new Response("Invalid signature", { status: 401 });
     }
 
-    let payload: { counts?: Record<string, number> } = {};
+    let payload: {
+      counts?: Record<string, number>;
+      fw_version?: unknown;
+      app_version?: unknown;
+    } = {};
     try {
       payload = JSON.parse(rawBody);
     } catch (_err) {
       return new Response("Invalid JSON", { status: 400 });
+    }
+
+    const { error: statusErr } = await supabase
+      .from("device_status")
+      .upsert(
+        {
+          device_id: device.id,
+          last_seen_at: new Date().toISOString(),
+          fw_version: typeof payload.fw_version === "string"
+            ? payload.fw_version
+            : null,
+          app_version: typeof payload.app_version === "string"
+            ? payload.app_version
+            : null,
+        },
+        { onConflict: "device_id" },
+      );
+
+    if (statusErr) {
+      return new Response(
+        JSON.stringify({ error: "write_status", detail: statusErr }),
+        { status: 500, headers: { "content-type": "application/json" } },
+      );
     }
 
     const counts = payload.counts ?? {};

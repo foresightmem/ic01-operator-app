@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/auth/app_role_service.dart';
 import '../../../core/services/push_notifications_service.dart';
 import '../../../core/ui/app_design_system.dart';
 
@@ -77,24 +78,11 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // Leggiamo il ruolo dal profilo
-      final profileData = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      final role = profileData != null ? profileData['role'] as String? : null;
+      final role = await AppRoleService(client: supabase).currentRole();
 
       if (!mounted) return;
 
-      if (role == 'technician') {
-        context.go('/maintenance');
-      } else if (role == 'admin') {
-        context.go('/admin');
-      } else {
-        context.go('/dashboard');
-      }
+      context.go(landingPathForRole(role));
 
       await PushNotificationsService.instance.syncTokenForCurrentUser();
     } catch (e) {

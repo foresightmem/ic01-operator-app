@@ -28,6 +28,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'package:ic01_operator_app/core/auth/app_role_service.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_activities_page.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_client_detail_page.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_clients_overview_page.dart';
@@ -35,6 +36,12 @@ import 'package:ic01_operator_app/features/admin/presentation/admin_coverage_pag
 import 'package:ic01_operator_app/features/admin/presentation/admin_coverage_plan_page.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_dashboard_page.dart';
 import 'package:ic01_operator_app/features/admin/presentation/admin_machine_config_page.dart';
+import 'package:ic01_operator_app/features/control_center/presentation/control_center_device_detail_page.dart';
+import 'package:ic01_operator_app/features/control_center/presentation/control_center_devices_page.dart';
+import 'package:ic01_operator_app/features/control_center/presentation/control_center_diagnostics_page.dart';
+import 'package:ic01_operator_app/features/control_center/presentation/control_center_events_page.dart';
+import 'package:ic01_operator_app/features/control_center/presentation/control_center_overview_page.dart';
+import 'package:ic01_operator_app/features/control_center/presentation/control_center_shell.dart';
 import 'package:ic01_operator_app/models/admin_event.dart';
 
 import '../features/auth/presentation/login_page.dart';
@@ -51,7 +58,7 @@ import 'main_shell.dart';
 /// Router principale dell'app IC-01.
 final GoRouter appRouter = GoRouter(
   initialLocation: '/dashboard',
-  redirect: (BuildContext context, GoRouterState state) {
+  redirect: (BuildContext context, GoRouterState state) async {
     final session = Supabase.instance.client.auth.currentSession;
     final bool loggedIn = session != null;
 
@@ -75,7 +82,22 @@ final GoRouter appRouter = GoRouter(
     }
 
     if (loggedIn && goingToLogin) {
-      return '/dashboard';
+      final role = await AppRoleService().currentRole();
+      return landingPathForRole(role);
+    }
+
+    if (loggedIn && !publicRoute) {
+      final role = await AppRoleService().currentRole();
+      final bool controlCenterPath = normalizedPath.startsWith(
+        '/control-center',
+      );
+      final bool internalAdminOnLegacyArea =
+          role == AppRole.internalAdmin && !controlCenterPath;
+
+      if (!isPathAllowedForRole(normalizedPath, role) ||
+          internalAdminOnLegacyArea) {
+        return landingPathForRole(role);
+      }
     }
 
     return null;
@@ -98,6 +120,52 @@ final GoRouter appRouter = GoRouter(
       redirect: (context, state) {
         return state.uri.replace(path: '/segnalazione').toString();
       },
+    ),
+
+    // =========================
+    // MAGMA CONTROL CENTER
+    // =========================
+    ShellRoute(
+      builder: (context, state, child) {
+        final path = state.uri.path;
+        final index = path.startsWith('/control-center/devices')
+            ? 1
+            : path.startsWith('/control-center/events')
+            ? 2
+            : path.startsWith('/control-center/diagnostics')
+            ? 3
+            : 0;
+        return ControlCenterShell(currentIndex: index, child: child);
+      },
+      routes: <RouteBase>[
+        GoRoute(
+          path: '/control-center',
+          builder: (context, state) => const ControlCenterOverviewPage(),
+        ),
+        GoRoute(
+          path: '/control-center/overview',
+          redirect: (context, state) => '/control-center',
+        ),
+        GoRoute(
+          path: '/control-center/devices',
+          builder: (context, state) => const ControlCenterDevicesPage(),
+        ),
+        GoRoute(
+          path: '/control-center/devices/:deviceId',
+          builder: (context, state) {
+            final deviceId = state.pathParameters['deviceId']!;
+            return ControlCenterDeviceDetailPage(deviceId: deviceId);
+          },
+        ),
+        GoRoute(
+          path: '/control-center/events',
+          builder: (context, state) => const ControlCenterEventsPage(),
+        ),
+        GoRoute(
+          path: '/control-center/diagnostics',
+          builder: (context, state) => const ControlCenterDiagnosticsPage(),
+        ),
+      ],
     ),
 
     // =========================

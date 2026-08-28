@@ -101,7 +101,8 @@ serve(async (req) => {
         .from("device_commands")
         .select("id, command, payload")
         .eq("device_id", auth.devicePk)
-        .eq("status", "pending")
+        .in("status", ["queued", "available", "pending"])
+        .gt("expires_at", new Date().toISOString())
         .order("created_at", { ascending: true })
         .limit(1)
         .maybeSingle();
@@ -118,7 +119,11 @@ serve(async (req) => {
 
       const { error: sentErr } = await supabase
         .from("device_commands")
-        .update({ status: "sent", sent_at: new Date().toISOString() })
+        .update({
+          status: "delivered_to_app",
+          delivered_at: new Date().toISOString(),
+          sent_at: new Date().toISOString(),
+        })
         .eq("id", cmd.id);
 
       if (sentErr) {
@@ -166,11 +171,32 @@ serve(async (req) => {
         );
       }
 
+      const normalizedStatus = status === "ack"
+        ? "completed"
+        : status === "sent"
+        ? "sent_to_device"
+        : status;
+      const nowIso = new Date().toISOString();
+      const terminal = normalizedStatus === "completed" ||
+        normalizedStatus === "failed" ||
+        normalizedStatus === "unsupported" ||
+        normalizedStatus === "expired" ||
+        normalizedStatus === "cancelled";
+
       const { error: ackErr } = await supabase
         .from("device_commands")
         .update({
-          status,
-          ack_at: new Date().toISOString(),
+          status: normalizedStatus,
+          ack_at: nowIso,
+          executed_at: normalizedStatus === "completed" ? nowIso : undefined,
+          completed_at: terminal ? nowIso : undefined,
+          response: normalizedStatus === "completed"
+            ? { message: payload.message ?? "ok" }
+            : undefined,
+          error: normalizedStatus === "failed" ||
+              normalizedStatus === "unsupported"
+            ? payload.message ?? normalizedStatus
+            : undefined,
         })
         .eq("id", commandId)
         .eq("device_id", auth.devicePk);
