@@ -28,6 +28,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/auth/app_role_service.dart';
+import '../../../core/navigation/navigation_action_sheet.dart';
+import '../../../core/navigation/navigation_launcher.dart';
+import '../../../core/navigation/navigation_permissions.dart';
 import '../../../core/ui/app_design_system.dart';
 import '../../public_support/presentation/public_support_page.dart';
 
@@ -45,7 +49,10 @@ class TicketItem {
   final DateTime? resolvedAt;
   final int? resolutionTimeSeconds;
   final String clientName;
+  final String? siteId;
   final String? siteName;
+  final String? siteAddress;
+  final String? siteCity;
   final String machineCode;
   final String? assignedTechnicianId;
   final String? assignedTechnicianName;
@@ -61,7 +68,10 @@ class TicketItem {
     required this.resolvedAt,
     required this.resolutionTimeSeconds,
     required this.clientName,
+    required this.siteId,
     required this.siteName,
+    required this.siteAddress,
+    required this.siteCity,
     required this.machineCode,
     required this.assignedTechnicianId,
     required this.assignedTechnicianName,
@@ -81,7 +91,10 @@ class TicketItem {
           : DateTime.tryParse(map['resolved_at'] as String),
       resolutionTimeSeconds: (map['resolution_time_seconds'] as num?)?.toInt(),
       clientName: map['client_name'] as String? ?? 'Cliente',
+      siteId: map['site_id'] as String?,
       siteName: map['site_name'] as String?,
+      siteAddress: map['site_address'] as String?,
+      siteCity: map['site_city'] as String?,
       machineCode: map['machine_code'] as String? ?? 'N/D',
       assignedTechnicianId: map['assigned_technician_id'] as String?,
       assignedTechnicianName: map['assigned_technician_name'] as String?,
@@ -89,6 +102,13 @@ class TicketItem {
       assignedOperatorName: map['assigned_operator_name'] as String?,
     );
   }
+
+  SiteNavigationDestination get siteDestination => SiteNavigationDestination(
+    siteId: siteId,
+    siteName: siteName ?? 'Sede',
+    address: siteAddress,
+    city: siteCity,
+  );
 }
 
 enum _TicketSortMode { newest, oldest, resolutionDesc, resolutionAsc }
@@ -539,6 +559,13 @@ class _MaintenanceTicketsPageState extends State<MaintenanceTicketsPage> {
                                   color: AppColors.muted,
                                 ),
                               ),
+                              if (canUseExternalNavigation(
+                                    AppRole.fromValue(_role),
+                                  ) &&
+                                  t.siteDestination.canNavigate)
+                                SiteNavigationButton(
+                                  destination: t.siteDestination,
+                                ),
                               _buildActionsForTicket(
                                 t,
                                 isAdmin: isAdmin,

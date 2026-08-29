@@ -16,6 +16,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/auth/app_role_service.dart';
+import '../../../core/navigation/navigation_action_sheet.dart';
+import '../../../core/navigation/navigation_launcher.dart';
+import '../../../core/navigation/navigation_permissions.dart';
 import '../../../core/ui/app_design_system.dart';
 import '../../onboarding/data/customer_machine_onboarding_service.dart';
 import '../../onboarding/presentation/onboarding_dialogs.dart';
@@ -57,6 +61,18 @@ class ClientMachine {
   }
 }
 
+class ClientDetailData {
+  final List<OnboardingSite> sites;
+  final List<ClientMachine> machines;
+  final bool canOpenNavigator;
+
+  const ClientDetailData({
+    required this.sites,
+    required this.machines,
+    required this.canOpenNavigator,
+  });
+}
+
 /// Pagina di dettaglio cliente: mostra le macchine di quel cliente
 class ClientDetailPage extends StatefulWidget {
   final String clientId;
@@ -69,22 +85,37 @@ class ClientDetailPage extends StatefulWidget {
 }
 
 class _ClientDetailPageState extends State<ClientDetailPage> {
-  late Future<List<ClientMachine>> _futureMachines;
+  late Future<ClientDetailData> _futureData;
 
   @override
   void initState() {
     super.initState();
-    _futureMachines = _loadMachines();
+    _futureData = _loadData();
   }
 
-  /// Carica le macchine dalla view `machine_effective_assignment`.
-  /// Filtri:
-  ///   - client_id = widget.clientId
-  ///   - effective_operator_id = utente corrente
-  Future<List<ClientMachine>> _loadMachines() async {
+  Future<ClientDetailData> _loadData() async {
     final supabase = Supabase.instance.client;
     final user = supabase.auth.currentUser;
-    if (user == null) return [];
+    if (user == null) {
+      return const ClientDetailData(
+        sites: [],
+        machines: [],
+        canOpenNavigator: false,
+      );
+    }
+
+    final role = await AppRoleService(client: supabase).currentRole();
+
+    final sitesData = await supabase
+        .from('sites')
+        .select('id, client_id, name, address, city, latitude, longitude')
+        .eq('client_id', widget.clientId)
+        .order('name', ascending: true);
+
+    final sites = (sitesData as List)
+        .cast<Map<String, dynamic>>()
+        .map(OnboardingSite.fromMap)
+        .toList();
 
     final data = await supabase
         .from('machine_effective_assignment')
@@ -93,12 +124,18 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
         .eq('effective_operator_id', user.id);
 
     final rows = (data as List).cast<Map<String, dynamic>>();
-    return rows.map(ClientMachine.fromEffectiveMap).toList();
+    final machines = rows.map(ClientMachine.fromEffectiveMap).toList();
+
+    return ClientDetailData(
+      sites: sites,
+      machines: machines,
+      canOpenNavigator: canUseExternalNavigation(role),
+    );
   }
 
-  Future<void> _refreshMachines() async {
+  Future<void> _refreshData() async {
     setState(() {
-      _futureMachines = _loadMachines();
+      _futureData = _loadData();
     });
   }
 
@@ -192,7 +229,7 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
                 clientId: widget.clientId,
               );
               if (created && mounted) {
-                _refreshMachines();
+                _refreshData();
               }
             },
           ),
@@ -205,7 +242,7 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
                 initialClientId: widget.clientId,
               );
               if (created && mounted) {
-                _refreshMachines();
+                _refreshData();
               }
             },
           ),
@@ -216,8 +253,8 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
           ),
         ],
       ),
-      body: FutureBuilder<List<ClientMachine>>(
-        future: _futureMachines,
+      body: FutureBuilder<ClientDetailData>(
+        future: _futureData,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const AppLoading();
@@ -226,13 +263,15 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
           if (snapshot.hasError) {
             return AppErrorState(
               message: 'Errore nel caricamento: ${snapshot.error}',
-              onRetry: _refreshMachines,
+              onRetry: _refreshData,
             );
           }
 
-          final machines = snapshot.data ?? [];
+          final data = snapshot.data;
+          final sites = data?.sites ?? const <OnboardingSite>[];
+          final machines = data?.machines ?? const <ClientMachine>[];
 
-          if (machines.isEmpty) {
+          if (sites.isEmpty && machines.isEmpty) {
             return const AppEmptyState(
               title: 'Nessuna macchina trovata',
               message: 'Aggiungi una sede o una macchina dal menu in alto.',
@@ -240,47 +279,130 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
             );
           }
 
-          return ListView.separated(
+          return ListView(
             padding: context.responsive.pagePadding,
-            itemCount: machines.length,
-            separatorBuilder: (context, index) =>
-                const SizedBox(height: AppSpacing.sm),
-            itemBuilder: (context, index) {
-              final m = machines[index];
-              final color = _stateColor(m.state);
-              final label = _stateLabel(m.state);
+            children: [
+              if (sites.isNotEmpty) ...[
+                Text('Sedi', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: AppSpacing.xs),
+                for (final site in sites)
+                  _SiteCard(
+                    site: site,
+                    showNavigation: data?.canOpenNavigator ?? false,
+                  ),
+                const SizedBox(height: AppSpacing.lg),
+              ],
+              Text('Macchine', style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: AppSpacing.xs),
+              if (machines.isEmpty)
+                const AppEmptyState(
+                  title: 'Nessuna macchina trovata',
+                  icon: Icons.coffee_maker_outlined,
+                ),
+              for (final m in machines) ...[
+                Builder(
+                  builder: (context) {
+                    final color = _stateColor(m.state);
+                    final label = _stateLabel(m.state);
 
-              return Card(
-                child: ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: color.withValues(alpha: 0.12),
-                    child: Text(
-                      '${m.currentFillPercent.toStringAsFixed(0)}%',
-                      style: TextStyle(
-                        color: color,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: color.withValues(alpha: 0.12),
+                          child: Text(
+                            '${m.currentFillPercent.toStringAsFixed(0)}%',
+                            style: TextStyle(
+                              color: color,
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        title: Text(
+                          m.code,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        subtitle: Text(
+                          '${m.siteName}\nStato: $label (${m.state})',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        isThreeLine: true,
+                        onTap: () async {
+                          await context.push('/machines/${m.machineId}');
+                          if (mounted) {
+                            _refreshData();
+                          }
+                        },
                       ),
-                    ),
-                  ),
-                  title: Text(
-                    m.code,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text('${m.siteName}\nStato: $label (${m.state})'),
-                  trailing: const Icon(Icons.chevron_right),
-                  isThreeLine: true,
-                  onTap: () async {
-                    await context.push('/machines/${m.machineId}');
-                    if (mounted) {
-                      _refreshMachines();
-                    }
+                    );
                   },
                 ),
-              );
-            },
+              ],
+            ],
           );
         },
+      ),
+    );
+  }
+}
+
+class _SiteCard extends StatelessWidget {
+  final OnboardingSite site;
+  final bool showNavigation;
+
+  const _SiteCard({required this.site, required this.showNavigation});
+
+  @override
+  Widget build(BuildContext context) {
+    final destination = SiteNavigationDestination(
+      siteId: site.id,
+      siteName: site.name,
+      address: site.address,
+      city: site.city,
+      latitude: site.latitude,
+      longitude: site.longitude,
+    );
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 2),
+                  child: Icon(Icons.place_outlined, color: AppColors.muted),
+                ),
+                const SizedBox(width: AppSpacing.sm),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        site.name,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                      const SizedBox(height: AppSpacing.xxs),
+                      Text(
+                        site.displaySubtitle,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (showNavigation && destination.canNavigate) ...[
+              const SizedBox(height: AppSpacing.sm),
+              SiteNavigationButton(destination: destination),
+            ],
+          ],
+        ),
       ),
     );
   }

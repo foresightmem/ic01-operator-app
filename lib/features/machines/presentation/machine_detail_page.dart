@@ -4,6 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/auth/app_role_service.dart';
+import '../../../core/navigation/navigation_action_sheet.dart';
+import '../../../core/navigation/navigation_launcher.dart';
+import '../../../core/navigation/navigation_permissions.dart';
 import '../../../core/ui/app_design_system.dart';
 
 /// ===============================================================
@@ -160,12 +164,16 @@ class MachineHeaderModel {
   final String machineCode;
   final String? siteName;
   final String? clientName;
+  final SiteNavigationDestination? siteDestination;
+  final bool canOpenNavigator;
 
   const MachineHeaderModel({
     required this.machineId,
     required this.machineCode,
     required this.siteName,
     required this.clientName,
+    required this.siteDestination,
+    required this.canOpenNavigator,
   });
 }
 
@@ -234,12 +242,20 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
       final machineCode = list.first['machine_code'] as String? ?? 'N/D';
       final siteName = list.first['site_name'] as String?;
       final clientName = list.first['client_name'] as String?;
+      final siteDestination = await _loadSiteDestination(
+        supabase,
+        machineId,
+        fallbackSiteName: siteName,
+      );
+      final role = await AppRoleService(client: supabase).currentRole();
 
       final header = MachineHeaderModel(
         machineId: machineId,
         machineCode: machineCode,
         siteName: siteName,
         clientName: clientName,
+        siteDestination: siteDestination,
+        canOpenNavigator: canUseExternalNavigation(role),
       );
 
       final map = <ConsumableType, ConsumableState>{};
@@ -264,6 +280,41 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
         _error = 'Errore nel caricamento: $e';
         _loading = false;
       });
+    }
+  }
+
+  Future<SiteNavigationDestination?> _loadSiteDestination(
+    SupabaseClient supabase,
+    String machineId, {
+    required String? fallbackSiteName,
+  }) async {
+    try {
+      final assignment = await supabase
+          .from('machine_effective_assignment')
+          .select('site_id')
+          .eq('machine_id', machineId)
+          .maybeSingle();
+
+      final siteId = assignment?['site_id'] as String?;
+      if (siteId == null || siteId.trim().isEmpty) return null;
+
+      final site = await supabase
+          .from('sites')
+          .select('id, name, address, city, latitude, longitude')
+          .eq('id', siteId)
+          .maybeSingle();
+      if (site == null) return null;
+
+      return SiteNavigationDestination(
+        siteId: site['id'] as String?,
+        siteName: site['name'] as String? ?? fallbackSiteName ?? 'Sede',
+        address: site['address'] as String?,
+        city: site['city'] as String?,
+        latitude: (site['latitude'] as num?)?.toDouble(),
+        longitude: (site['longitude'] as num?)?.toDouble(),
+      );
+    } catch (_) {
+      return null;
     }
   }
 
@@ -398,6 +449,11 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
           ],
           const SizedBox(height: AppSpacing.xxs),
           _infoRow('Codice macchina', header.machineCode),
+          if (header.canOpenNavigator &&
+              header.siteDestination?.canNavigate == true) ...[
+            const SizedBox(height: AppSpacing.sm),
+            SiteNavigationButton(destination: header.siteDestination!),
+          ],
         ],
       ),
     );
