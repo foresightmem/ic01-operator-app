@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/auth/app_role_service.dart';
 import '../../../core/services/push_notifications_service.dart';
+import '../../../core/ui/app_design_system.dart';
 
 /// ===============================================================
 /// LoginPage
@@ -76,26 +78,11 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      // Leggiamo il ruolo dal profilo
-      final profileData = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', user.id)
-          .maybeSingle();
-
-      final role = profileData != null ? profileData['role'] as String? : null;
+      final role = await AppRoleService(client: supabase).currentRole();
 
       if (!mounted) return;
 
-      if (role == 'technician') {
-        context.go('/maintenance');
-      } 
-      else if (role == 'admin') {
-        context.go('/admin');
-      }
-       else {
-        context.go('/dashboard');
-      }
+      context.go(landingPathForRole(role));
 
       await PushNotificationsService.instance.syncTokenForCurrentUser();
     } catch (e) {
@@ -136,7 +123,9 @@ class _LoginPageState extends State<LoginPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Email di recupero password inviata, se l’email esiste.'),
+          content: Text(
+            'Email di recupero password inviata, se l’email esiste.',
+          ),
         ),
       );
     } catch (e) {
@@ -148,60 +137,61 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
 
     return Scaffold(
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Branding IC-01
-                const SizedBox(height: 16),
-                Text(
-                  'IC-01',
-                  style: TextStyle(
-                    fontSize: 46,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 2,
-                    color: colorScheme.primary,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: context.responsive.pagePadding,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: context.responsive.formMaxWidth,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'MAGMA',
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      color: AppColors.black,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Refill & Maintenance',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'Industrial Care',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: AppColors.petroleum,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 24),
-
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                  const SizedBox(height: AppSpacing.sm),
+                  Text(
+                    'Monitoraggio e manutenzione macchine vending',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: AppColors.muted,
+                    ),
+                  ),
+                  const SizedBox(height: AppSpacing.lg),
+                  AppSectionCard(
+                    padding: const EdgeInsets.all(AppSpacing.lg),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        const Text(
+                        Text(
                           'Accedi al tuo account',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
+                          style: theme.textTheme.titleLarge,
+                        ),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          'Usa le credenziali operative fornite da MAGMA.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: AppColors.muted,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Usa le credenziali fornite da IC-01 / GEDA.',
-                          style: TextStyle(
-                            fontSize: 13,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: AppSpacing.md),
 
                         // Email
                         TextField(
@@ -213,7 +203,7 @@ class _LoginPageState extends State<LoginPage> {
                             prefixIcon: Icon(Icons.email_outlined),
                           ),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: AppSpacing.sm),
 
                         // Password
                         TextField(
@@ -239,17 +229,17 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 16),
+                        const SizedBox(height: AppSpacing.md),
 
                         if (_errorMessage != null)
                           Padding(
-                            padding: const EdgeInsets.only(bottom: 8.0),
-                            child: Text(
-                              _errorMessage!,
-                              style: const TextStyle(
-                                color: Colors.red,
-                                fontSize: 13,
-                              ),
+                            padding: const EdgeInsets.only(
+                              bottom: AppSpacing.sm,
+                            ),
+                            child: AppStatusPill(
+                              label: _errorMessage!,
+                              color: AppColors.danger,
+                              icon: Icons.error_outline,
                             ),
                           ),
 
@@ -271,7 +261,7 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(height: AppSpacing.xs),
 
                         Align(
                           alignment: Alignment.centerRight,
@@ -283,17 +273,14 @@ class _LoginPageState extends State<LoginPage> {
                       ],
                     ),
                   ),
-                ),
-
-                const SizedBox(height: 16),
-                const Text(
-                  'IC-01 v.1 by MAGMA S.r.l',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey,
+                  const SizedBox(height: AppSpacing.md),
+                  Text(
+                    'IC-01 v.1 by MAGMA S.r.l',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

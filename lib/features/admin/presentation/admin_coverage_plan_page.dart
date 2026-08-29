@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
+
 class AdminCoveragePlanPage extends StatefulWidget {
   final String unavailabilityId;
 
-  const AdminCoveragePlanPage({
-    super.key,
-    required this.unavailabilityId,
-  });
+  const AdminCoveragePlanPage({super.key, required this.unavailabilityId});
 
   @override
   State<AdminCoveragePlanPage> createState() => _AdminCoveragePlanPageState();
@@ -82,10 +81,12 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
 
       _operators = (operatorsRows as List)
           .map((m) => m as Map<String, dynamic>)
-          .map((m) => _ProfileItem(
-                id: m['id'] as String,
-                name: (m['full_name'] as String?) ?? 'Operatore',
-              ))
+          .map(
+            (m) => _ProfileItem(
+              id: m['id'] as String,
+              name: (m['full_name'] as String?) ?? 'Operatore',
+            ),
+          )
           .toList();
 
       // suggested assignments: filtriamo per operatore assente + date (v1)
@@ -94,7 +95,9 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
 
       final assignmentsRows = await supabase
           .from('temp_machine_assignments')
-          .select('id, machine_id, original_operator_id, new_operator_id, start_date, end_date, status')
+          .select(
+            'id, machine_id, original_operator_id, new_operator_id, start_date, end_date, status',
+          )
           .eq('original_operator_id', abs.operatorId)
           .eq('start_date', start)
           .eq('end_date', end)
@@ -105,14 +108,18 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
           .toList();
 
       // info macchine+site+client per rendering
-      final machineIds =
-          assignmentList.map((a) => a['machine_id'] as String).toSet().toList();
+      final machineIds = assignmentList
+          .map((a) => a['machine_id'] as String)
+          .toSet()
+          .toList();
 
       Map<String, _MachineInfo> machineInfoById = {};
       if (machineIds.isNotEmpty) {
         final machineRows = await supabase
             .from('machines')
-            .select('id, code, site_id, sites(name, city, client_id, clients(name))')
+            .select(
+              'id, code, site_id, sites(name, city, client_id, clients(name))',
+            )
             .inFilter('id', machineIds);
 
         for (final r in (machineRows as List).cast<Map<String, dynamic>>()) {
@@ -146,15 +153,19 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
     }
   }
 
-  Future<void> _updateRowOperator(_AssignmentRow row, String newOperatorId) async {
+  Future<void> _updateRowOperator(
+    _AssignmentRow row,
+    String newOperatorId,
+  ) async {
     setState(() {
       row.newOperatorId = newOperatorId;
     });
 
     final supabase = Supabase.instance.client;
-    await supabase.from('temp_machine_assignments').update({
-      'new_operator_id': newOperatorId,
-    }).eq('id', row.id);
+    await supabase
+        .from('temp_machine_assignments')
+        .update({'new_operator_id': newOperatorId})
+        .eq('id', row.id);
   }
 
   Future<void> _confirmPlan() async {
@@ -177,16 +188,16 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
           .eq('status', 'suggested');
 
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Piano confermato.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Piano confermato.')));
 
       context.go('/admin');
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Errore conferma: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Errore conferma: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -222,14 +233,14 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
       widgets.add(
         Container(
           width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          color: Colors.grey.shade100,
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          color: AppColors.surfaceAlt,
           child: Text(
             key,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              fontSize: 14,
-            ),
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
           ),
         ),
       );
@@ -239,42 +250,60 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
         final info = r.machineInfo;
 
         widgets.add(
-          ListTile(
-            title: Text(
-              info == null ? 'Macchina' : 'Macchina ${info.code}',
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
-            subtitle: info == null
-                ? const Text('Cliente: N/D')
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Sito: ${info.siteName ?? 'N/D'}'),
-                      Text('Città: ${info.city ?? 'N/D'}'),
-                    ],
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.sm),
+            child: Wrap(
+              spacing: AppSpacing.md,
+              runSpacing: AppSpacing.sm,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                SizedBox(
+                  width: context.responsive.isCompact
+                      ? context.responsive.width - (AppSpacing.md * 4)
+                      : 360,
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      info == null ? 'Macchina' : 'Macchina ${info.code}',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    subtitle: info == null
+                        ? const Text('Cliente: N/D')
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Sito: ${info.siteName ?? 'N/D'}'),
+                              Text('Città: ${info.city ?? 'N/D'}'),
+                            ],
+                          ),
                   ),
-            trailing: SizedBox(
-              width: 260,
-              child: DropdownButtonFormField<String>(
-                initialValue: r.newOperatorId,
-                decoration: const InputDecoration(
-                  labelText: 'Assegna a',
-                  isDense: true,
                 ),
-                items: operators
-                    .where((o) => o.id != absentOperatorId)
-                    .map(
-                      (o) => DropdownMenuItem(
-                        value: o.id,
-                        child: Text(o.name),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) {
-                  if (value == null) return;
-                  _updateRowOperator(r, value);
-                },
-              ),
+                SizedBox(
+                  width: context.responsive.isCompact
+                      ? context.responsive.width - (AppSpacing.md * 4)
+                      : 280,
+                  child: DropdownButtonFormField<String>(
+                    initialValue: r.newOperatorId,
+                    decoration: const InputDecoration(
+                      labelText: 'Assegna a',
+                      isDense: true,
+                    ),
+                    items: operators
+                        .where((o) => o.id != absentOperatorId)
+                        .map(
+                          (o) => DropdownMenuItem(
+                            value: o.id,
+                            child: Text(o.name),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) {
+                      if (value == null) return;
+                      _updateRowOperator(r, value);
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
         );
@@ -295,9 +324,7 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
       future: _isAdminFuture,
       builder: (context, snap) {
         if (!snap.hasData) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
+          return const Scaffold(body: AppLoading());
         }
         final isAdmin = snap.data ?? false;
 
@@ -318,16 +345,7 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
               onPressed: () => context.go('/admin/coverage'),
             ),
             actions: [
-              if (user != null)
-                Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                    child: Text(
-                      user.email ?? '',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  ),
-                ),
+              if (user != null) AppUserEmailAction(email: user.email),
               IconButton(
                 icon: const Icon(Icons.logout),
                 onPressed: () async {
@@ -338,62 +356,63 @@ class _AdminCoveragePlanPageState extends State<AdminCoveragePlanPage> {
             ],
           ),
           body: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const AppLoading()
               : (_absence == null)
-                  ? const Center(child: Text('Assenza non trovata.'))
-                  : Center(
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 900),
-                        child: ListView(
-                          padding: const EdgeInsets.all(16),
-                          children: [
-                            _AbsenceHeader(absence: _absence!),
-                            const SizedBox(height: 12),
-                            if (_rows.isEmpty)
-                              const Card(
-                                child: Padding(
-                                  padding: EdgeInsets.all(16),
-                                  child: Text(
-                                      'Nessuna macchina da riassegnare (o piano già generato/confirmato).'),
-                                ),
-                              )
-                            else
-                              Card(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Column(
-                                  children: _buildGroupedRows(
-                                    context,
-                                    _rows,
-                                    _operators,
-                                    _absence!.operatorId,
-                                  ),
-                                ),
+              ? const AppEmptyState(
+                  title: 'Assenza non trovata',
+                  icon: Icons.event_busy_outlined,
+                )
+              : Center(
+                  child: AppPage(
+                    maxWidth: context.responsive.adminMaxWidth,
+                    child: ListView(
+                      padding: EdgeInsets.zero,
+                      children: [
+                        _AbsenceHeader(absence: _absence!),
+                        const SizedBox(height: AppSpacing.sm),
+                        if (_rows.isEmpty)
+                          const AppSectionCard(
+                            child: Text(
+                              'Nessuna macchina da riassegnare (o piano già generato/confirmato).',
+                            ),
+                          )
+                        else
+                          Card(
+                            child: Column(
+                              children: _buildGroupedRows(
+                                context,
+                                _rows,
+                                _operators,
+                                _absence!.operatorId,
                               ),
-                            const SizedBox(height: 16),
-                            FilledButton.icon(
-                              onPressed: _saving ? null : _confirmPlan,
-                              icon: _saving
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Icon(Icons.check),
-                              label: const Text('Conferma piano'),
                             ),
-                            const SizedBox(height: 8),
-                            const Text(
-                              'Nota: dopo la conferma, le assegnazioni temporanee vengono applicate agli operatori durante il periodo selezionato, senza modificare l’assegnazione “di default” delle macchine.',
-                              style: TextStyle(fontSize: 12, color: Colors.grey),
-                            ),
-                          ],
+                          ),
+                        const SizedBox(height: AppSpacing.md),
+                        FilledButton.icon(
+                          onPressed: _saving ? null : _confirmPlan,
+                          icon: _saving
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.check),
+                          label: const Text('Conferma piano'),
                         ),
-                      ),
+                        const SizedBox(height: AppSpacing.xs),
+                        const Text(
+                          'Nota: dopo la conferma, le assegnazioni temporanee vengono applicate agli operatori durante il periodo selezionato, senza modificare l’assegnazione “di default” delle macchine.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ],
                     ),
+                  ),
+                ),
         );
       },
     );
@@ -406,25 +425,22 @@ class _AbsenceHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Assenza registrata',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Periodo: ${absence.startDate.toIso8601String().substring(0, 10)} → ${absence.endDate.toIso8601String().substring(0, 10)}',
-            ),
-            if (absence.reason != null && absence.reason!.trim().isNotEmpty)
-              Text('Motivo: ${absence.reason}'),
-          ],
-        ),
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Assenza registrata',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Periodo: ${absence.startDate.toIso8601String().substring(0, 10)} → ${absence.endDate.toIso8601String().substring(0, 10)}',
+          ),
+          if (absence.reason != null && absence.reason!.trim().isNotEmpty)
+            Text('Motivo: ${absence.reason}'),
+        ],
       ),
     );
   }

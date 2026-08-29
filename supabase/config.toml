@@ -1,0 +1,16 @@
+
+[functions.public_maintenance_ticket]
+enabled = true
+verify_jwt = false
+import_map = "./functions/public_maintenance_ticket/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/public_maintenance_ticket/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/public_maintenance_ticket/*.html" ]
+
+[functions.places_autocomplete]
+enabled = true
+verify_jwt = true
+entrypoint = "./functions/places_autocomplete/index.ts"

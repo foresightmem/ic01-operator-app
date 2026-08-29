@@ -37,12 +37,11 @@ async function hmacHex(secret: string, message: string): Promise<string> {
     .join("");
 }
 
-type RecipeRow = {
-  beverage: string;
-  consumable: string;
-  delta_units: number;
-  require_water_tank: boolean;
-};
+function monitoringFactorForMode(
+  mode: string | null | undefined,
+): "hot" | "cold" {
+  return mode === "cold" ? "cold" : "hot";
+}
 
 serve(async (req) => {
   try {
@@ -96,11 +95,38 @@ serve(async (req) => {
       return new Response("Invalid signature", { status: 401 });
     }
 
-    let payload: { counts?: Record<string, number> } = {};
+    let payload: {
+      counts?: Record<string, number>;
+      fw_version?: unknown;
+      app_version?: unknown;
+    } = {};
     try {
       payload = JSON.parse(rawBody);
     } catch (_err) {
       return new Response("Invalid JSON", { status: 400 });
+    }
+
+    const { error: statusErr } = await supabase
+      .from("device_status")
+      .upsert(
+        {
+          device_id: device.id,
+          last_seen_at: new Date().toISOString(),
+          fw_version: typeof payload.fw_version === "string"
+            ? payload.fw_version
+            : null,
+          app_version: typeof payload.app_version === "string"
+            ? payload.app_version
+            : null,
+        },
+        { onConflict: "device_id" },
+      );
+
+    if (statusErr) {
+      return new Response(
+        JSON.stringify({ error: "write_status", detail: statusErr }),
+        { status: 500, headers: { "content-type": "application/json" } },
+      );
     }
 
     const counts = payload.counts ?? {};
@@ -129,7 +155,7 @@ serve(async (req) => {
 
     const { data: machineRow, error: machineErr } = await supabase
       .from("machines")
-      .select("water_tank_enabled")
+      .select("temperature_mode")
       .eq("id", device.machine_id)
       .maybeSingle();
 
@@ -140,87 +166,49 @@ serve(async (req) => {
       );
     }
 
-    const waterEnabled = machineRow?.water_tank_enabled === true;
+    const factor = monitoringFactorForMode(machineRow?.temperature_mode);
 
-    const { data: recipes, error: recipeErr } = await supabase
-      .from("beverage_recipe_items")
-      .select("beverage, consumable, delta_units, require_water_tank");
-
-    if (recipeErr || !recipes) {
-      return new Response(
-        JSON.stringify({ error: "load_recipes", detail: recipeErr }),
-        { status: 500, headers: { "content-type": "application/json" } },
-      );
-    }
-
-    const recipeRows = (recipes as RecipeRow[]).filter((r) =>
-      r.beverage in beverageCounts
-    );
-
-    const { data: consumables, error: consErr } = await supabase
+    const { data: consumable, error: consErr } = await supabase
       .from("machine_consumables")
-      .select("id, type, capacity_units, current_units")
-      .eq("machine_id", device.machine_id);
+      .select("id, type, capacity_units, current_units, is_enabled")
+      .eq("machine_id", device.machine_id)
+      .eq("type", factor)
+      .eq("is_enabled", true)
+      .maybeSingle();
 
-    if (consErr || !consumables) {
+    if (consErr) {
       return new Response(
         JSON.stringify({ error: "load_consumables", detail: consErr }),
         { status: 500, headers: { "content-type": "application/json" } },
       );
     }
 
-    const currentByType = new Map<string, number>();
-    const capacityByType = new Map<string, number>();
-    const idByType = new Map<string, string>();
-    for (const row of consumables as Array<{ id: string; type: string; capacity_units: number; current_units: number }>) {
-      idByType.set(row.type, row.id);
-      capacityByType.set(row.type, Number(row.capacity_units) || 0);
-      currentByType.set(row.type, Number(row.current_units) || 0);
-    }
-
     const warnings: string[] = [];
-
-    for (const r of recipeRows) {
-      const count = beverageCounts[r.beverage] || 0;
-      if (count <= 0) continue;
-      if (r.require_water_tank && !waterEnabled) {
-        warnings.push(`skip ${r.beverage}:${r.consumable} water_tank_disabled`);
-        continue;
-      }
-      if (!currentByType.has(r.consumable) || !capacityByType.has(r.consumable)) {
-        warnings.push(`missing consumable ${r.consumable}`);
-        continue;
-      }
-
-      const capacity = capacityByType.get(r.consumable) ?? 0;
+    if (!consumable) {
+      warnings.push(`missing active factor ${factor}`);
+    } else {
+      const row = consumable as {
+        id: string;
+        capacity_units: number;
+        current_units: number;
+      };
+      const capacity = Number(row.capacity_units) || 0;
       if (capacity <= 0) {
-        warnings.push(`invalid capacity ${r.consumable}`);
-        continue;
-      }
-
-      const cur = currentByType.get(r.consumable) ?? 0;
-      const next = cur + r.delta_units * count;
-      const clamped = Math.min(Math.max(next, 0), capacity); // TODO: investigate underflow/overflow
-      currentByType.set(r.consumable, clamped);
-    }
-
-    const updates = Array.from(currentByType.entries())
-      .map(([type, current_units]) => {
-        const id = idByType.get(type);
-        return id ? { id, current_units } : null;
-      })
-      .filter((u): u is { id: string; current_units: number } => u !== null);
-
-    for (const u of updates) {
-      const { error: updateErr } = await supabase
-        .from("machine_consumables")
-        .update({ current_units: u.current_units })
-        .eq("id", u.id);
-      if (updateErr) {
-        return new Response(
-          JSON.stringify({ error: "update_consumables", detail: updateErr }),
-          { status: 500, headers: { "content-type": "application/json" } },
-        );
+        warnings.push(`invalid capacity ${factor}`);
+      } else {
+        const cur = Number(row.current_units) || 0;
+        const next = cur - totalEvents;
+        const currentUnits = Math.min(Math.max(next, 0), capacity);
+        const { error: updateErr } = await supabase
+          .from("machine_consumables")
+          .update({ current_units: currentUnits })
+          .eq("id", row.id);
+        if (updateErr) {
+          return new Response(
+            JSON.stringify({ error: "update_consumables", detail: updateErr }),
+            { status: 500, headers: { "content-type": "application/json" } },
+          );
+        }
       }
     }
 
@@ -228,6 +216,7 @@ serve(async (req) => {
       JSON.stringify({
         ok: true,
         applied: totalEvents,
+        factor,
         warnings,
       }),
       { headers: { "content-type": "application/json" } },

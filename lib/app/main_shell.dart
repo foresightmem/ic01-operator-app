@@ -31,11 +31,7 @@ class MainShell extends StatefulWidget {
   final Widget child;
   final int currentIndex;
 
-  const MainShell({
-    super.key,
-    required this.child,
-    required this.currentIndex,
-  });
+  const MainShell({super.key, required this.child, required this.currentIndex});
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -96,63 +92,64 @@ class _MainShellState extends State<MainShell> {
 
     return Scaffold(
       body: widget.child,
-      bottomNavigationBar: 
-      isAdmin? null
-      :NavigationBar(
-        selectedIndex: widget.currentIndex,
-        onDestinationSelected: (index) {
-          if (_loadingRole) return;
+      bottomNavigationBar: isAdmin
+          ? null
+          : NavigationBar(
+              selectedIndex: widget.currentIndex,
+              onDestinationSelected: (index) {
+                if (_loadingRole) return;
 
-          // Tecnico: può usare solo Manutenzioni (index 2)
-          if (isTechnician && index != 2) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content:
-                    Text('Questa sezione non è disponibile per il tuo profilo.'),
-                duration: Duration(seconds: 2),
-              ),
-            );
-            return;
-          }
+                // Tecnico: può usare solo Manutenzioni (index 2)
+                if (isTechnician && index != 2) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Questa sezione non è disponibile per il tuo profilo.',
+                      ),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                  return;
+                }
 
-          if (index == 0) {
-            context.go('/dashboard');
-          } else if (index == 1) {
-            context.go('/clients');
-          } else if (index == 2) {
-            context.go('/maintenance');
-          }
-        },
-        destinations: [
-          NavigationDestination(
-            icon: Icon(
-              Icons.today_outlined,
-              color: isTechnician ? disabledColor : null,
+                if (index == 0) {
+                  context.go('/dashboard');
+                } else if (index == 1) {
+                  context.go('/clients');
+                } else if (index == 2) {
+                  context.go('/maintenance');
+                }
+              },
+              destinations: [
+                NavigationDestination(
+                  icon: Icon(
+                    Icons.today_outlined,
+                    color: isTechnician ? disabledColor : null,
+                  ),
+                  selectedIcon: Icon(
+                    Icons.today,
+                    color: isTechnician ? disabledColor : null,
+                  ),
+                  label: 'Oggi/Domani',
+                ),
+                NavigationDestination(
+                  icon: Icon(
+                    Icons.list_alt_outlined,
+                    color: isTechnician ? disabledColor : null,
+                  ),
+                  selectedIcon: Icon(
+                    Icons.list_alt,
+                    color: isTechnician ? disabledColor : null,
+                  ),
+                  label: 'Tutti',
+                ),
+                const NavigationDestination(
+                  icon: Icon(Icons.build_outlined),
+                  selectedIcon: Icon(Icons.build),
+                  label: 'Manutenzioni',
+                ),
+              ],
             ),
-            selectedIcon: Icon(
-              Icons.today,
-              color: isTechnician ? disabledColor : null,
-            ),
-            label: 'Oggi/Domani',
-          ),
-          NavigationDestination(
-            icon: Icon(
-              Icons.list_alt_outlined,
-              color: isTechnician ? disabledColor : null,
-            ),
-            selectedIcon: Icon(
-              Icons.list_alt,
-              color: isTechnician ? disabledColor : null,
-            ),
-            label: 'Tutti',
-          ),
-          const NavigationDestination(
-            icon: Icon(Icons.build_outlined),
-            selectedIcon: Icon(Icons.build),
-            label: 'Manutenzioni',
-          ),
-        ],
-      ),
     );
   }
 }

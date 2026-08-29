@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.example.ic01_operator_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = maxOf(35, flutter.compileSdkVersion)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -26,8 +26,8 @@ android {
         applicationId = "com.example.ic01_operator_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = maxOf(21, flutter.minSdkVersion)
+        targetSdk = maxOf(35, flutter.targetSdkVersion)
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
+import '../../onboarding/presentation/onboarding_dialogs.dart';
+
 class AdminClientsOverviewPage extends StatefulWidget {
   const AdminClientsOverviewPage({super.key});
 
@@ -45,10 +48,10 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
   Future<_AdminClientsData> _loadData() async {
     final supabase = Supabase.instance.client;
 
-    final clientsRaw =
-        await supabase.from('clients').select('id, name, vat_number');
-    final sitesRaw =
-        await supabase.from('sites').select('id, client_id, city');
+    final clientsRaw = await supabase
+        .from('clients')
+        .select('id, name, vat_number');
+    final sitesRaw = await supabase.from('sites').select('id, client_id, city');
     final machinesRaw = await supabase
         .from('machines')
         .select('id, site_id, yearly_shots');
@@ -56,10 +59,12 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
     final clients = (clientsRaw as List)
         .map((e) => e as Map<String, dynamic>)
         .toList();
-    final sites =
-        (sitesRaw as List).map((e) => e as Map<String, dynamic>).toList();
-    final machines =
-        (machinesRaw as List).map((e) => e as Map<String, dynamic>).toList();
+    final sites = (sitesRaw as List)
+        .map((e) => e as Map<String, dynamic>)
+        .toList();
+    final machines = (machinesRaw as List)
+        .map((e) => e as Map<String, dynamic>)
+        .toList();
 
     // mappe di supporto
     final Map<String, Map<String, dynamic>> clientById = {
@@ -84,10 +89,9 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
       final client = clientById[clientId];
       if (client == null) continue;
 
-      final String city =
-          (site['city'] as String?)?.trim().isNotEmpty == true
-              ? (site['city'] as String)
-              : 'Senza città';
+      final String city = (site['city'] as String?)?.trim().isNotEmpty == true
+          ? (site['city'] as String)
+          : 'Senza città';
 
       final int shots = (m['yearly_shots'] as int?) ?? 0;
 
@@ -129,18 +133,21 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
 
     final List<_CityGroup> groups = byCity.entries.map((entry) {
       final clientsAgg = entry.value;
-      final totalMachines =
-          clientsAgg.fold<int>(0, (sum, c) => sum + c.machineCount);
-      final totalShots =
-          clientsAgg.fold<int>(0, (sum, c) => sum + c.totalShots);
+      final totalMachines = clientsAgg.fold<int>(
+        0,
+        (sum, c) => sum + c.machineCount,
+      );
+      final totalShots = clientsAgg.fold<int>(
+        0,
+        (sum, c) => sum + c.totalShots,
+      );
       return _CityGroup(
         city: entry.key,
         clients: clientsAgg,
         totalMachines: totalMachines,
         totalShots: totalShots,
       );
-    }).toList()
-      ..sort((a, b) => a.city.compareTo(b.city));
+    }).toList()..sort((a, b) => a.city.compareTo(b.city));
 
     return _AdminClientsData(groups: groups);
   }
@@ -151,16 +158,13 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
       future: _isAdminFuture,
       builder: (context, snapshot) {
         if (!snapshot.hasData) {
-          return const Scaffold(
-              body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(body: AppLoading());
         }
         final isAdmin = snapshot.data ?? false;
         if (!isAdmin) {
           return Scaffold(
             appBar: AppBar(title: const Text('Clienti (admin)')),
-            body: const Center(
-              child: Text('Accesso riservato agli admin.'),
-            ),
+            body: const Center(child: Text('Accesso riservato agli admin.')),
           );
         }
 
@@ -171,39 +175,67 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
               icon: const Icon(Icons.arrow_back),
               onPressed: () => context.go('/admin'),
             ),
+            actions: [
+              IconButton(
+                tooltip: 'Nuovo cliente',
+                icon: const Icon(Icons.person_add_alt_1),
+                onPressed: () async {
+                  final created = await showCreateClientDialog(context);
+                  if (created && mounted) {
+                    setState(() {
+                      _dataFuture = _loadData();
+                    });
+                  }
+                },
+              ),
+              IconButton(
+                tooltip: 'Nuova macchina',
+                icon: const Icon(Icons.add_business),
+                onPressed: () async {
+                  final created = await showCreateMachineDialog(context);
+                  if (created && mounted) {
+                    setState(() {
+                      _dataFuture = _loadData();
+                    });
+                  }
+                },
+              ),
+            ],
           ),
           body: FutureBuilder<_AdminClientsData>(
             future: _dataFuture,
             builder: (context, snap) {
               if (!snap.hasData) {
-                return const Center(child: CircularProgressIndicator());
+                return const AppLoading(label: 'Caricamento clienti');
               }
               final data = snap.data!;
               if (data.groups.isEmpty) {
-                return const Center(child: Text('Nessun cliente trovato.'));
+                return const AppEmptyState(
+                  title: 'Nessun cliente trovato',
+                  icon: Icons.apartment_outlined,
+                );
               }
 
               // lista città per filtro
               final allCities = <String>{
                 for (final g in data.groups) g.city,
-              }.toList()
-                ..sort();
-              final List<String> cityOptions = [
-                'Tutte le città',
-                ...allCities,
-              ];
+              }.toList()..sort();
+              final List<String> cityOptions = ['Tutte le città', ...allCities];
 
               // costruiamo la lista filtrata/ordinata
-              final filteredGroups =
-                  _applyFiltersAndSorting(data.groups, _searchQuery,
-                      _cityFilter, _onlyWithMachines, _sortMode);
+              final filteredGroups = _applyFiltersAndSorting(
+                data.groups,
+                _searchQuery,
+                _cityFilter,
+                _onlyWithMachines,
+                _sortMode,
+              );
 
               return ListView.builder(
-                padding: const EdgeInsets.all(16),
+                padding: context.responsive.pagePadding,
                 itemCount: filteredGroups.length + 1,
                 itemBuilder: (context, index) {
                   if (index == 0) {
-                    // CARD FILTRI
                     return _FiltersCard(
                       searchQuery: _searchQuery,
                       onSearchChanged: (value) {
@@ -220,17 +252,16 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
                       },
                       sortMode: _sortMode,
                       onSortModeChanged: (mode) {
-                        setState(() => _sortMode = mode ?? _ClientSortMode.shotsDesc);
+                        setState(
+                          () => _sortMode = mode ?? _ClientSortMode.shotsDesc,
+                        );
                       },
                     );
                   }
 
                   final group = filteredGroups[index - 1];
                   return Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    margin: const EdgeInsets.only(bottom: 12),
+                    margin: const EdgeInsets.only(bottom: AppSpacing.sm),
                     child: ExpansionTile(
                       tilePadding: const EdgeInsets.symmetric(
                         horizontal: 16,
@@ -254,8 +285,9 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
                       children: [
                         for (final c in group.clients)
                           ListTile(
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 8),
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                            ),
                             title: Text(c.clientName),
                             subtitle: Text(
                               'Macchine: ${c.machineCount} • Erogazioni: ${c.totalShots}',
@@ -297,8 +329,7 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
       // filtro per cliente
       final List<_ClientAggregate> filteredClients = group.clients.where((c) {
         if (onlyWithMachines && c.machineCount == 0) return false;
-        if (query.isNotEmpty &&
-            !c.clientName.toLowerCase().contains(query)) {
+        if (query.isNotEmpty && !c.clientName.toLowerCase().contains(query)) {
           return false;
         }
         return true;
@@ -315,16 +346,20 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
             return b.machineCount.compareTo(a.machineCount);
           case _ClientSortMode.nameAsc:
             return a.clientName.toLowerCase().compareTo(
-                  b.clientName.toLowerCase(),
-                );
+              b.clientName.toLowerCase(),
+            );
         }
       });
 
       // ricalcolo aggregati della città in base ai clienti filtrati
-      final totalMachines =
-          filteredClients.fold<int>(0, (sum, c) => sum + c.machineCount);
-      final totalShots =
-          filteredClients.fold<int>(0, (sum, c) => sum + c.totalShots);
+      final totalMachines = filteredClients.fold<int>(
+        0,
+        (sum, c) => sum + c.machineCount,
+      );
+      final totalShots = filteredClients.fold<int>(
+        0,
+        (sum, c) => sum + c.totalShots,
+      );
 
       result.add(
         _CityGroup(
@@ -370,88 +405,85 @@ class _FiltersCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            TextField(
-              decoration: const InputDecoration(
-                labelText: 'Cerca cliente',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-              ),
-              onChanged: onSearchChanged,
+    return AppSectionCard(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        children: [
+          TextField(
+            decoration: const InputDecoration(
+              labelText: 'Cerca cliente',
+              prefixIcon: Icon(Icons.search),
+              isDense: true,
             ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    initialValue: cityFilter,
-                    decoration: const InputDecoration(
-                      labelText: 'Città',
-                      isDense: true,
-                    ),
-                    items: cityOptions
-                        .map(
-                          (c) => DropdownMenuItem(
-                            value: c,
-                            child: Text(c),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: onCityChanged,
+            onChanged: onSearchChanged,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
+            children: [
+              SizedBox(
+                width: _fieldWidth(context),
+                child: DropdownButtonFormField<String>(
+                  initialValue: cityFilter,
+                  decoration: const InputDecoration(
+                    labelText: 'Città',
+                    isDense: true,
                   ),
+                  items: cityOptions
+                      .map((c) => DropdownMenuItem(value: c, child: Text(c)))
+                      .toList(),
+                  onChanged: onCityChanged,
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: DropdownButtonFormField<_ClientSortMode>(
-                    initialValue: sortMode,
-                    decoration: const InputDecoration(
-                      labelText: 'Ordina per',
-                      isDense: true,
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: _ClientSortMode.shotsDesc,
-                        child: Text('Erogazioni (↓)'),
-                      ),
-                      DropdownMenuItem(
-                        value: _ClientSortMode.machinesDesc,
-                        child: Text('Macchine (↓)'),
-                      ),
-                      DropdownMenuItem(
-                        value: _ClientSortMode.nameAsc,
-                        child: Text('Nome (A-Z)'),
-                      ),
-                    ],
-                    onChanged: onSortModeChanged,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            SwitchListTile(
-              dense: true,
-              contentPadding: EdgeInsets.zero,
-              title: const Text(
-                'Solo clienti con almeno una macchina',
-                style: TextStyle(fontSize: 13),
               ),
-              value: onlyWithMachines,
-              onChanged: onOnlyWithMachinesChanged,
-              activeThumbColor: theme.colorScheme.primary,
+              SizedBox(
+                width: _fieldWidth(context),
+                child: DropdownButtonFormField<_ClientSortMode>(
+                  initialValue: sortMode,
+                  decoration: const InputDecoration(
+                    labelText: 'Ordina per',
+                    isDense: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: _ClientSortMode.shotsDesc,
+                      child: Text('Erogazioni (↓)'),
+                    ),
+                    DropdownMenuItem(
+                      value: _ClientSortMode.machinesDesc,
+                      child: Text('Macchine (↓)'),
+                    ),
+                    DropdownMenuItem(
+                      value: _ClientSortMode.nameAsc,
+                      child: Text('Nome (A-Z)'),
+                    ),
+                  ],
+                  onChanged: onSortModeChanged,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          SwitchListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: const Text(
+              'Solo clienti con almeno una macchina',
+              style: TextStyle(fontSize: 13),
             ),
-          ],
-        ),
+            value: onlyWithMachines,
+            onChanged: onOnlyWithMachinesChanged,
+            activeThumbColor: AppColors.petroleum,
+          ),
+        ],
       ),
     );
   }
+
+  double _fieldWidth(BuildContext context) => context.responsive.isCompact
+      ? context.responsive.width - (AppSpacing.md * 4)
+      : 260;
 }
 
 class _AdminClientsData {
@@ -489,8 +521,4 @@ class _ClientAggregate {
   });
 }
 
-enum _ClientSortMode {
-  shotsDesc,
-  machinesDesc,
-  nameAsc,
-}
+enum _ClientSortMode { shotsDesc, machinesDesc, nameAsc }

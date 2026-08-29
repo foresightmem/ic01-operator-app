@@ -31,6 +31,9 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
+import '../../onboarding/presentation/onboarding_dialogs.dart';
+
 /// ===============================================================
 /// DashboardPage
 ///
@@ -63,13 +66,15 @@ class ClientState {
   });
 
   factory ClientState.fromMap(Map<String, dynamic> map) {
-    String _stringOrEmpty(dynamic value) => value == null ? '' : value.toString();
-    int _intOrZero(dynamic value) {
+    String stringOrEmpty(dynamic value) =>
+        value == null ? '' : value.toString();
+    int intOrZero(dynamic value) {
       if (value is int) return value;
       if (value is num) return value.toInt();
       return int.tryParse(value?.toString() ?? '') ?? 0;
     }
-    String _stateFromRank(int rank) {
+
+    String stateFromRank(int rank) {
       switch (rank) {
         case 4:
           return 'black';
@@ -84,17 +89,18 @@ class ClientState {
       }
     }
 
-    final rawWorstState = _stringOrEmpty(map['worst_state']);
-    final worstStateRank = _intOrZero(map['worst_state_rank']);
-    final computedWorstState =
-        rawWorstState.isNotEmpty ? rawWorstState : _stateFromRank(worstStateRank);
+    final rawWorstState = stringOrEmpty(map['worst_state']);
+    final worstStateRank = intOrZero(map['worst_state_rank']);
+    final computedWorstState = rawWorstState.isNotEmpty
+        ? rawWorstState
+        : stateFromRank(worstStateRank);
 
     return ClientState(
-      clientId: _stringOrEmpty(map['client_id']),
-      name: _stringOrEmpty(map['name']),
+      clientId: stringOrEmpty(map['client_id']),
+      name: stringOrEmpty(map['name']),
       worstState: computedWorstState.isEmpty ? 'unknown' : computedWorstState,
-      totalMachines: _intOrZero(map['total_machines']),
-      machinesToRefill: _intOrZero(map['machines_to_refill']),
+      totalMachines: intOrZero(map['total_machines']),
+      machinesToRefill: intOrZero(map['machines_to_refill']),
     );
   }
 }
@@ -103,10 +109,7 @@ class DashboardPage extends StatefulWidget {
   /// initialTab: 0 = Oggi/Domani, 1 = Tutti
   final int initialTab;
 
-  const DashboardPage({
-    super.key,
-    this.initialTab = 0,
-  });
+  const DashboardPage({super.key, this.initialTab = 0});
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -145,9 +148,35 @@ class _DashboardPageState extends State<DashboardPage> {
         .eq('assigned_operator_id', user.id) // 👈 filtro per operatore corrente
         .order('name', ascending: true);
 
-    return (data as List<dynamic>)
-        .map((row) => ClientState.fromMap(row as Map<String, dynamic>))
-        .toList();
+    final clientsById = <String, ClientState>{
+      for (final client in (data as List<dynamic>).map(
+        (row) => ClientState.fromMap(row as Map<String, dynamic>),
+      ))
+        client.clientId: client,
+    };
+
+    final accessibleClients = await supabase
+        .from('clients')
+        .select('id, name')
+        .order('name', ascending: true);
+
+    for (final row
+        in (accessibleClients as List).cast<Map<String, dynamic>>()) {
+      final clientId = (row['id'] as String?) ?? '';
+      if (clientId.isEmpty || clientsById.containsKey(clientId)) continue;
+      clientsById[clientId] = ClientState(
+        clientId: clientId,
+        name: (row['name'] as String?) ?? 'Senza nome',
+        worstState: 'unknown',
+        totalMachines: 0,
+        machinesToRefill: 0,
+      );
+    }
+
+    final clients = clientsById.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+
+    return clients;
   }
 
   Future<void> _loadUserRole() async {
@@ -196,15 +225,15 @@ class _DashboardPageState extends State<DashboardPage> {
   Color _stateColor(String state) {
     switch (state) {
       case 'green':
-        return Colors.green;
+        return AppColors.success;
       case 'yellow':
-        return Colors.orange;
+        return AppColors.warning;
       case 'red':
-        return Colors.red;
+        return AppColors.danger;
       case 'black':
-        return Colors.black;
+        return AppColors.stopped;
       default:
-        return Colors.grey;
+        return AppColors.muted;
     }
   }
 
@@ -263,8 +292,9 @@ class _DashboardPageState extends State<DashboardPage> {
     }
 
     // nessun red/black: usiamo il livello peggiore disponibile
-    final maxSev =
-        withSeverity.map((e) => e.sev).reduce((a, b) => a > b ? a : b);
+    final maxSev = withSeverity
+        .map((e) => e.sev)
+        .reduce((a, b) => a > b ? a : b);
     final today = withSeverity
         .where((e) => e.sev == maxSev)
         .map((e) => e.client)
@@ -277,8 +307,9 @@ class _DashboardPageState extends State<DashboardPage> {
     if (levelsBelow.isEmpty) {
       return (today, <ClientState>[]);
     }
-    final nextSev =
-        levelsBelow.reduce((a, b) => a > b ? a : b); // migliore tra i peggiori sotto
+    final nextSev = levelsBelow.reduce(
+      (a, b) => a > b ? a : b,
+    ); // migliore tra i peggiori sotto
     final tomorrow = withSeverity
         .where((e) => e.sev == nextSev)
         .map((e) => e.client)
@@ -289,15 +320,18 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildClientList(List<ClientState> clients) {
     if (clients.isEmpty) {
-      return const Center(
-        child: Text('Nessun cliente in questa sezione.'),
+      return const AppEmptyState(
+        title: 'Nessun cliente in questa sezione',
+        message: 'Quando ci sono priorita operative le trovi qui.',
+        icon: Icons.storefront_outlined,
       );
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.all(16),
+      padding: context.responsive.pagePadding,
       itemCount: clients.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (context, index) =>
+          const SizedBox(height: AppSpacing.sm),
       itemBuilder: (context, index) {
         final client = clients[index];
         final color = _stateColor(client.worstState);
@@ -309,26 +343,23 @@ class _DashboardPageState extends State<DashboardPage> {
 
         return Card(
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(AppRadii.md),
             onTap: () async {
               final encodedName = Uri.encodeComponent(client.name);
-              await context
-                  .push('/clients/${client.clientId}?name=$encodedName');
+              await context.push(
+                '/clients/${client.clientId}?name=$encodedName',
+              );
               if (mounted) {
                 _refresh();
               }
             },
             child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
               child: ListTile(
                 leading: CircleAvatar(
                   radius: 18,
                   backgroundColor: color.withValues(alpha: 0.12),
-                  child: Icon(
-                    Icons.storefront,
-                    color: color,
-                    size: 20,
-                  ),
+                  child: Icon(Icons.storefront, color: color, size: 20),
                 ),
                 title: Text(
                   client.name,
@@ -338,16 +369,13 @@ class _DashboardPageState extends State<DashboardPage> {
                   ),
                 ),
                 subtitle: Padding(
-                  padding: const EdgeInsets.only(top: 4.0),
+                  padding: const EdgeInsets.only(top: AppSpacing.xxs),
                   child: Text(
                     'Stato: $label (${client.worstState})\n$refillInfo',
                     style: const TextStyle(fontSize: 13, height: 1.3),
                   ),
                 ),
-                trailing: const Icon(
-                  Icons.chevron_right,
-                  color: Colors.grey,
-                ),
+                trailing: const Icon(Icons.chevron_right),
               ),
             ),
           ),
@@ -360,20 +388,23 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget _buildKpiBox({
     required String title,
     required String value,
+    required IconData icon,
   }) {
+    final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          title,
-          style: const TextStyle(fontSize: 12),
+        Row(
+          children: [
+            Expanded(child: Text(title, style: theme.textTheme.bodySmall)),
+            Icon(icon, size: 18, color: AppColors.petroleum),
+          ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpacing.xs),
         Text(
           value,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+          style: theme.textTheme.headlineSmall?.copyWith(
+            fontWeight: FontWeight.w800,
           ),
         ),
       ],
@@ -388,49 +419,42 @@ class _DashboardPageState extends State<DashboardPage> {
   ) {
     final todayClients = today.length;
     final tomorrowClients = tomorrow.length;
-    final machinesToRefillToday =
-        today.fold<int>(0, (sum, c) => sum + c.machinesToRefill);
+    final machinesToRefillToday = today.fold<int>(
+      0,
+      (sum, c) => sum + c.machinesToRefill,
+    );
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-      child: Row(
+      padding: EdgeInsets.fromLTRB(
+        context.responsive.pagePadding.left,
+        AppSpacing.sm,
+        context.responsive.pagePadding.right,
+        AppSpacing.xs,
+      ),
+      child: AppAdaptiveGrid(
+        minTileWidth: 160,
+        maxColumns: 3,
+        childAspectRatio: 1.8,
         children: [
-          Expanded(
-            child: Card(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                child: _buildKpiBox(
-                  title: 'Clienti oggi',
-                  value: '$todayClients',
-                ),
-              ),
+          AppSectionCard(
+            child: _buildKpiBox(
+              title: 'Clienti oggi',
+              value: '$todayClients',
+              icon: Icons.today_outlined,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Card(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                child: _buildKpiBox(
-                  title: 'Clienti domani',
-                  value: '$tomorrowClients',
-                ),
-              ),
+          AppSectionCard(
+            child: _buildKpiBox(
+              title: 'Clienti domani',
+              value: '$tomorrowClients',
+              icon: Icons.event_available_outlined,
             ),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Card(
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                child: _buildKpiBox(
-                  title: 'Macchine da refillare',
-                  value: '$machinesToRefillToday',
-                ),
-              ),
+          AppSectionCard(
+            child: _buildKpiBox(
+              title: 'Macchine da refillare',
+              value: '$machinesToRefillToday',
+              icon: Icons.inventory_2_outlined,
             ),
           ),
         ],
@@ -456,10 +480,7 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
             Expanded(
               child: TabBarView(
-                children: [
-                  _buildClientList(today),
-                  _buildClientList(tomorrow),
-                ],
+                children: [_buildClientList(today), _buildClientList(tomorrow)],
               ),
             ),
           ],
@@ -481,39 +502,28 @@ class _DashboardPageState extends State<DashboardPage> {
     final user = Supabase.instance.client.auth.currentUser;
 
     if (_roleLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const Scaffold(body: AppLoading());
     }
 
     // Se è un tecnico, non deve usare la dashboard refill
     if (_userRole == 'technician') {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Accesso non consentito'),
-        ),
+        appBar: AppBar(title: const Text('Accesso non consentito')),
         body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Il tuo ruolo è Tecnico specializzato.\n'
-                  'La sezione refill non è disponibile.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 16),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: () {
-                    context.go('/maintenance');
-                  },
-                  child: const Text('Vai alle manutenzioni straordinarie'),
-                ),
-              ],
+          child: AppPage(
+            maxWidth: context.responsive.operatorMaxWidth,
+            child: AppEmptyState(
+              icon: Icons.lock_outline,
+              title: 'Sezione refill non disponibile',
+              message:
+                  'Il tuo ruolo e Tecnico specializzato. Usa la sezione manutenzioni straordinarie.',
+              action: ElevatedButton.icon(
+                onPressed: () {
+                  context.go('/maintenance');
+                },
+                icon: const Icon(Icons.build_outlined),
+                label: const Text('Vai alle manutenzioni straordinarie'),
+              ),
             ),
           ),
         ),
@@ -528,16 +538,27 @@ class _DashboardPageState extends State<DashboardPage> {
               : 'Tutti i clienti assegnati',
         ),
         actions: [
-          if (user != null)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Text(
-                  user.email ?? '',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ),
+          IconButton(
+            tooltip: 'Nuovo cliente',
+            icon: const Icon(Icons.person_add_alt_1),
+            onPressed: () async {
+              final created = await showCreateClientDialog(context);
+              if (created && mounted) {
+                _refresh();
+              }
+            },
+          ),
+          IconButton(
+            tooltip: 'Nuova macchina',
+            icon: const Icon(Icons.add_business),
+            onPressed: () async {
+              final created = await showCreateMachineDialog(context);
+              if (created && mounted) {
+                _refresh();
+              }
+            },
+          ),
+          if (user != null) AppUserEmailAction(email: user.email),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -554,12 +575,13 @@ class _DashboardPageState extends State<DashboardPage> {
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting &&
                 !snapshot.hasData) {
-              return const Center(child: CircularProgressIndicator());
+              return const AppLoading();
             }
 
             if (snapshot.hasError) {
-              return Center(
-                child: Text('Errore nel caricamento: ${snapshot.error}'),
+              return AppErrorState(
+                message: 'Errore nel caricamento: ${snapshot.error}',
+                onRetry: _refresh,
               );
             }
 

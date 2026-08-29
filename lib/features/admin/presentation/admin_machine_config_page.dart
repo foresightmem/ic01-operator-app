@@ -4,10 +4,55 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-enum ConsumableType { coffee, milk, powder, water }
+import '../../../core/ui/app_design_system.dart';
+
+enum TemperatureMode { hot, cold }
+
+enum ConsumableType { hot, cold, coffee, milk, powder, water }
+
+TemperatureMode temperatureModeFromDb(String? value) {
+  switch (value) {
+    case 'cold':
+      return TemperatureMode.cold;
+    case 'hot':
+    default:
+      return TemperatureMode.hot;
+  }
+}
+
+String temperatureModeToDb(TemperatureMode mode) {
+  switch (mode) {
+    case TemperatureMode.hot:
+      return 'hot';
+    case TemperatureMode.cold:
+      return 'cold';
+  }
+}
+
+String temperatureModeLabel(TemperatureMode mode) {
+  switch (mode) {
+    case TemperatureMode.hot:
+      return 'Caldo';
+    case TemperatureMode.cold:
+      return 'Freddo';
+  }
+}
+
+ConsumableType factorForMode(TemperatureMode mode) {
+  switch (mode) {
+    case TemperatureMode.hot:
+      return ConsumableType.hot;
+    case TemperatureMode.cold:
+      return ConsumableType.cold;
+  }
+}
 
 String consumableTypeToDb(ConsumableType t) {
   switch (t) {
+    case ConsumableType.hot:
+      return 'hot';
+    case ConsumableType.cold:
+      return 'cold';
     case ConsumableType.coffee:
       return 'coffee';
     case ConsumableType.milk:
@@ -21,6 +66,10 @@ String consumableTypeToDb(ConsumableType t) {
 
 String consumableLabel(ConsumableType t) {
   switch (t) {
+    case ConsumableType.hot:
+      return 'Caldo';
+    case ConsumableType.cold:
+      return 'Freddo';
     case ConsumableType.coffee:
       return 'Caffè';
     case ConsumableType.milk:
@@ -34,6 +83,10 @@ String consumableLabel(ConsumableType t) {
 
 IconData consumableIcon(ConsumableType t) {
   switch (t) {
+    case ConsumableType.hot:
+      return Icons.local_fire_department;
+    case ConsumableType.cold:
+      return Icons.ac_unit;
     case ConsumableType.coffee:
       return Icons.coffee;
     case ConsumableType.milk:
@@ -66,11 +119,11 @@ class ConsumableConfigRow {
   });
 
   ConsumableConfigRow copy() => ConsumableConfigRow(
-        type: type,
-        isEnabled: isEnabled,
-        capacityUnits: capacityUnits,
-        currentUnits: currentUnits,
-      );
+    type: type,
+    isEnabled: isEnabled,
+    capacityUnits: capacityUnits,
+    currentUnits: currentUnits,
+  );
 }
 
 class AdminMachineConfigPage extends StatefulWidget {
@@ -95,10 +148,22 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
   bool _saving = false;
   String? _configError;
 
-  bool _waterTankEnabled = false;
+  TemperatureMode _temperatureMode = TemperatureMode.hot;
 
   // UI state for consumables
   final Map<ConsumableType, ConsumableConfigRow> _rows = {
+    ConsumableType.hot: ConsumableConfigRow(
+      type: ConsumableType.hot,
+      isEnabled: true,
+      capacityUnits: 0,
+      currentUnits: 0,
+    ),
+    ConsumableType.cold: ConsumableConfigRow(
+      type: ConsumableType.cold,
+      isEnabled: false,
+      capacityUnits: 0,
+      currentUnits: 0,
+    ),
     ConsumableType.coffee: ConsumableConfigRow(
       type: ConsumableType.coffee,
       isEnabled: true,
@@ -214,10 +279,12 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
 
       final list = (data as List)
           .cast<Map<String, dynamic>>()
-          .map((m) => MachineOption(
-                id: m['id'] as String,
-                code: (m['code'] as String?) ?? 'N/D',
-              ))
+          .map(
+            (m) => MachineOption(
+              id: m['id'] as String,
+              code: (m['code'] as String?) ?? 'N/D',
+            ),
+          )
           .toList();
 
       setState(() {
@@ -245,14 +312,14 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
     });
 
     try {
-      // water_tank_enabled
+      // temperature_mode
       final m = await _supabase
           .from('machines')
-          .select('water_tank_enabled')
+          .select('temperature_mode')
           .eq('id', machineId)
           .maybeSingle();
 
-      final waterTank = (m?['water_tank_enabled'] as bool?) ?? false;
+      final mode = temperatureModeFromDb(m?['temperature_mode'] as String?);
 
       // consumables rows
       final rows = await _supabase
@@ -269,7 +336,9 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
       void apply(ConsumableType t) {
         final key = consumableTypeToDb(t);
         final r = map[key];
-        final enabled = (r?['is_enabled'] as bool?) ?? (t != ConsumableType.water ? true : false);
+        final enabled =
+            (r?['is_enabled'] as bool?) ??
+            (t != ConsumableType.water ? true : false);
         final cap = (r?['capacity_units'] as num?)?.toInt() ?? 0;
         final cur = (r?['current_units'] as num?)?.toInt() ?? 0;
 
@@ -292,14 +361,13 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
         apply(t);
       }
 
-      // se water tank è false, forza water disabled in UI (coerente col modello)
-      if (!waterTank) {
-        final w = _rows[ConsumableType.water]!;
-        w.isEnabled = false;
+      final activeType = factorForMode(mode);
+      for (final t in ConsumableType.values) {
+        _rows[t]!.isEnabled = t == activeType;
       }
 
       setState(() {
-        _waterTankEnabled = waterTank;
+        _temperatureMode = mode;
         _loadingConfig = false;
       });
     } catch (e) {
@@ -324,26 +392,38 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
     return row;
   }
 
-  String? _validateAll() {
-    // water constraints
-    if (!_waterTankEnabled) {
-      final w = _rows[ConsumableType.water]!;
-      if (w.isEnabled) {
-        return 'Acqua abilitata ma water_tank_enabled è OFF. Disabilita acqua o abilita tanica.';
-      }
+  void _setTemperatureMode(TemperatureMode mode) {
+    final previousType = factorForMode(_temperatureMode);
+    final nextType = factorForMode(mode);
+    final previousRow = _readRowFromControllers(previousType);
+    final nextRow = _readRowFromControllers(nextType);
+
+    if (nextRow.capacityUnits <= 0 && previousRow.capacityUnits > 0) {
+      final copiedCurrent = previousRow.currentUnits
+          .clamp(0, previousRow.capacityUnits)
+          .toInt();
+      _capControllers[nextType]!.text = previousRow.capacityUnits.toString();
+      _curControllers[nextType]!.text = copiedCurrent.toString();
+      _rows[nextType]!
+        ..capacityUnits = previousRow.capacityUnits
+        ..currentUnits = copiedCurrent;
     }
 
+    _temperatureMode = mode;
     for (final t in ConsumableType.values) {
-      final row = _readRowFromControllers(t);
-      if (!row.isEnabled) continue;
+      _rows[t]!.isEnabled = t == nextType;
+    }
+  }
 
-      // capacity must be >0 for enabled consumables, otherwise operator UX is confusing
-      if (row.capacityUnits <= 0) {
-        return 'Capacità non valida per ${consumableLabel(t)} (deve essere > 0 se abilitato).';
-      }
-      if (row.currentUnits < 0 || row.currentUnits > row.capacityUnits) {
-        return 'Valore corrente non valido per ${consumableLabel(t)}.';
-      }
+  String? _validateAll() {
+    final activeType = factorForMode(_temperatureMode);
+    final row = _readRowFromControllers(activeType);
+
+    if (row.capacityUnits <= 0) {
+      return 'Capacità non valida per ${consumableLabel(activeType)} (deve essere > 0).';
+    }
+    if (row.currentUnits < 0 || row.currentUnits > row.capacityUnits) {
+      return 'Valore corrente non valido per ${consumableLabel(activeType)}.';
     }
 
     return null;
@@ -367,10 +447,12 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
     });
 
     try {
-      // 1) update machine water_tank_enabled
+      final activeType = factorForMode(_temperatureMode);
+
+      // 1) update machine temperature mode
       await _supabase
           .from('machines')
-          .update({'water_tank_enabled': _waterTankEnabled})
+          .update({'temperature_mode': temperatureModeToDb(_temperatureMode)})
           .eq('id', machineId);
 
       // 2) prepare upserts for machine_consumables
@@ -378,35 +460,29 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
       for (final t in ConsumableType.values) {
         final row = _readRowFromControllers(t);
 
-        // Enforce: if tank disabled => water disabled
-        final isEnabled = (t == ConsumableType.water && !_waterTankEnabled) ? false : row.isEnabled;
+        final isEnabled = t == activeType;
 
         upserts.add({
           'machine_id': machineId,
           'type': consumableTypeToDb(t),
           'is_enabled': isEnabled,
           'capacity_units': row.capacityUnits,
-          'current_units': isEnabled ? row.currentUnits.clamp(0, row.capacityUnits) : 0,
+          'current_units': isEnabled
+              ? row.currentUnits.clamp(0, row.capacityUnits)
+              : 0,
           'updated_at': DateTime.now().toIso8601String(),
         });
       }
 
-      await _supabase.from('machine_consumables').upsert(upserts);
-
-      // 3) If tank disabled, ensure DB water row disabled (safety belt)
-      if (!_waterTankEnabled) {
-        await _supabase
-            .from('machine_consumables')
-            .update({'is_enabled': false, 'current_units': 0})
-            .eq('machine_id', machineId)
-            .eq('type', 'water');
-      }
+      await _supabase
+          .from('machine_consumables')
+          .upsert(upserts, onConflict: 'machine_id,type');
 
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Configurazione salvata.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Configurazione salvata.')));
 
       // refresh from DB to ensure what you see is truth
       await _loadMachineConfig(machineId);
@@ -436,7 +512,7 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
     final user = _supabase.auth.currentUser;
 
     if (_checkingRole) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: AppLoading());
     }
 
     if (!_isAdmin) {
@@ -444,16 +520,7 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
         appBar: AppBar(
           title: const Text('Backoffice Serbatoi'),
           actions: [
-            if (user != null)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: Text(
-                    user.email ?? '',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-              ),
+            if (user != null) AppUserEmailAction(email: user.email),
             IconButton(
               icon: const Icon(Icons.logout),
               onPressed: () async {
@@ -467,23 +534,18 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
       );
     }
 
-    final selected = _machines.where((m) => m.id == _selectedMachineId).toList();
-    final selectedLabel = selected.isNotEmpty ? selected.first.code : 'Seleziona macchina';
+    final selected = _machines
+        .where((m) => m.id == _selectedMachineId)
+        .toList();
+    final selectedLabel = selected.isNotEmpty
+        ? selected.first.code
+        : 'Seleziona macchina';
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Backoffice Serbatoi (Dev)'),
         actions: [
-          if (user != null)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Text(
-                  user.email ?? '',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            ),
+          if (user != null) AppUserEmailAction(email: user.email),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -494,206 +556,201 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
         ],
       ),
       body: _loadingMachines
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading(label: 'Caricamento macchine')
           : _machines.isEmpty
-              ? const Center(child: Text('Nessuna macchina trovata.'))
-              : RefreshIndicator(
-                  onRefresh: () async {
-                    await _loadMachines();
-                  },
-                  child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      _buildMachinePickerCard(selectedLabel),
-                      const SizedBox(height: 12),
-                      _buildWaterTankCard(),
-                      const SizedBox(height: 12),
-                      _buildConsumablesCard(),
-                      const SizedBox(height: 12),
-                      if (_configError != null)
-                        Text(
-                          _configError!,
-                          style: const TextStyle(color: Colors.red, fontSize: 13),
-                        ),
-                      const SizedBox(height: 12),
-                      _buildSaveBar(),
-                      const SizedBox(height: 24),
-                    ],
-                  ),
-                ),
+          ? const AppEmptyState(
+              title: 'Nessuna macchina trovata',
+              icon: Icons.coffee_maker_outlined,
+            )
+          : RefreshIndicator(
+              onRefresh: () async {
+                await _loadMachines();
+              },
+              child: ListView(
+                padding: context.responsive.pagePadding,
+                children: [
+                  _buildMachinePickerCard(selectedLabel),
+                  const SizedBox(height: AppSpacing.sm),
+                  _buildModeCard(),
+                  const SizedBox(height: AppSpacing.sm),
+                  _buildConsumablesCard(),
+                  const SizedBox(height: AppSpacing.sm),
+                  if (_configError != null)
+                    Text(
+                      _configError!,
+                      style: const TextStyle(
+                        color: AppColors.danger,
+                        fontSize: 13,
+                      ),
+                    ),
+                  const SizedBox(height: AppSpacing.sm),
+                  _buildSaveBar(),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+              ),
+            ),
     );
   }
 
   Widget _buildMachinePickerCard(String selectedLabel) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Selezione macchina',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Selezione macchina',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          DropdownButtonFormField<String>(
+            key: ValueKey(_selectedMachineId),
+            initialValue: _selectedMachineId,
+            decoration: const InputDecoration(
+              border: OutlineInputBorder(),
+              isDense: true,
+              labelText: 'Macchina',
             ),
-            const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
-              value: _selectedMachineId,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                isDense: true,
-                labelText: 'Macchina',
-              ),
-              items: _machines
-                  .map(
-                    (m) => DropdownMenuItem(
-                      value: m.id,
-                      child: Text(m.code),
-                    ),
-                  )
-                  .toList(),
-              onChanged: _loadingConfig ? null : _onChangeMachine,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Selezionata: $selectedLabel',
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
+            items: _machines
+                .map((m) => DropdownMenuItem(value: m.id, child: Text(m.code)))
+                .toList(),
+            onChanged: _loadingConfig ? null : _onChangeMachine,
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Selezionata: $selectedLabel',
+            style: const TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildWaterTankCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Row(
-          children: [
-            const Icon(Icons.water_drop, color: Colors.grey),
-            const SizedBox(width: 12),
-            const Expanded(
-              child: Text(
-                'Tanica acqua (water_tank_enabled)',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+  Widget _buildModeCard() {
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Tipo macchina',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          SegmentedButton<TemperatureMode>(
+            segments: const [
+              ButtonSegment(
+                value: TemperatureMode.hot,
+                icon: Icon(Icons.local_fire_department),
+                label: Text('Caldo'),
               ),
-            ),
-            Switch(
-              value: _waterTankEnabled,
-              onChanged: _loadingConfig
-                  ? null
-                  : (v) {
-                      setState(() {
-                        _waterTankEnabled = v;
-                        if (!v) {
-                          // se disabiliti la tanica, l’acqua deve essere off
-                          _rows[ConsumableType.water]!.isEnabled = false;
-                        }
-                      });
-                    },
-            ),
-          ],
-        ),
+              ButtonSegment(
+                value: TemperatureMode.cold,
+                icon: Icon(Icons.ac_unit),
+                label: Text('Freddo'),
+              ),
+            ],
+            selected: {_temperatureMode},
+            onSelectionChanged: _loadingConfig
+                ? null
+                : (selected) {
+                    final mode = selected.first;
+                    setState(() {
+                      _setTemperatureMode(mode);
+                    });
+                  },
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildConsumablesCard() {
     if (_loadingConfig) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Center(child: CircularProgressIndicator()),
-        ),
+      return const AppSectionCard(
+        child: AppLoading(label: 'Caricamento configurazione'),
       );
     }
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Serbatoi per consumabile (dosi)',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'capacity_units = massimo, current_units = rimanenza. Se un consumabile è abilitato, capacity deve essere > 0.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-            const SizedBox(height: 12),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final w = constraints.maxWidth;
-                final cross = w >= 900 ? 2 : 1;
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Serbatoi per consumabile (dosi)',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpacing.xs),
+          Text(
+            'Viene monitorato solo il fattore della macchina ${temperatureModeLabel(_temperatureMode).toLowerCase()}.',
+            style: const TextStyle(fontSize: 12, color: AppColors.muted),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final responsive = AppResponsive(constraints.maxWidth);
+              final cross = responsive.columnsFor(
+                minTileWidth: 420,
+                maxColumns: 2,
+              );
 
-                return GridView.count(
-                  crossAxisCount: cross,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: cross == 2 ? 3.2 : 2.9,
-                  children: ConsumableType.values.map(_buildConsumableEditorTile).toList(),
-                );
-              },
-            ),
-          ],
-        ),
+              return GridView.count(
+                crossAxisCount: cross,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: AppSpacing.sm,
+                mainAxisSpacing: AppSpacing.sm,
+                childAspectRatio: cross == 2 ? 3.2 : 2.9,
+                children: [
+                  _buildConsumableEditorTile(factorForMode(_temperatureMode)),
+                ],
+              );
+            },
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildConsumableEditorTile(ConsumableType t) {
     final row = _rows[t]!;
-    final isWater = t == ConsumableType.water;
-    final waterBlocked = isWater && !_waterTankEnabled;
 
     return Container(
       decoration: BoxDecoration(
         border: Border.all(color: Theme.of(context).dividerColor),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadii.md),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      padding: const EdgeInsets.all(AppSpacing.sm),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(consumableIcon(t), color: Colors.grey),
-              const SizedBox(width: 10),
+              Icon(consumableIcon(t), color: AppColors.muted),
+              const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
                   consumableLabel(t),
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              Switch(
-                value: waterBlocked ? false : row.isEnabled,
-                onChanged: (_saving || waterBlocked)
-                    ? null
-                    : (v) {
-                        setState(() {
-                          row.isEnabled = v;
-                          if (!v) {
-                            _capControllers[t]!.text = _capControllers[t]!.text; // keep
-                            _curControllers[t]!.text = '0';
-                          }
-                        });
-                      },
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(
+          const SizedBox(height: AppSpacing.xs),
+          Wrap(
+            spacing: AppSpacing.sm,
+            runSpacing: AppSpacing.sm,
             children: [
-              Expanded(
+              SizedBox(
+                width: _fieldWidth(context),
                 child: TextFormField(
                   controller: _capControllers[t],
                   keyboardType: TextInputType.number,
-                  enabled: !_saving && !waterBlocked && row.isEnabled,
+                  enabled: !_saving && row.isEnabled,
                   decoration: const InputDecoration(
                     labelText: 'Capacity (dosi)',
                     border: OutlineInputBorder(),
@@ -701,12 +758,12 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
                   ),
                 ),
               ),
-              const SizedBox(width: 10),
-              Expanded(
+              SizedBox(
+                width: _fieldWidth(context),
                 child: TextFormField(
                   controller: _curControllers[t],
                   keyboardType: TextInputType.number,
-                  enabled: !_saving && !waterBlocked && row.isEnabled,
+                  enabled: !_saving && row.isEnabled,
                   decoration: const InputDecoration(
                     labelText: 'Current (dosi)',
                     border: OutlineInputBorder(),
@@ -716,21 +773,16 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          if (waterBlocked)
+          const SizedBox(height: AppSpacing.xs),
+          if (!row.isEnabled)
             const Text(
-              'Acqua disabilitata: tanica OFF.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            )
-          else if (!row.isEnabled)
-            const Text(
-              'Consumabile disabilitato.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+              'Fattore non attivo per questo tipo macchina.',
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
             )
           else
             const Text(
               'Suggerimento: imposta current = capacity dopo ricarica iniziale.',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(fontSize: 12, color: AppColors.muted),
             ),
         ],
       ),
@@ -738,24 +790,34 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
   }
 
   Widget _buildSaveBar() {
-    return Row(
+    return Wrap(
+      spacing: AppSpacing.sm,
+      runSpacing: AppSpacing.sm,
       children: [
-        Expanded(
+        SizedBox(
+          width: _buttonWidth(context),
           child: OutlinedButton.icon(
-            onPressed: (_saving || _selectedMachineId == null) ? null : () => _loadMachineConfig(_selectedMachineId!),
+            onPressed: (_saving || _selectedMachineId == null)
+                ? null
+                : () => _loadMachineConfig(_selectedMachineId!),
             icon: const Icon(Icons.refresh),
             label: const Text('Ricarica'),
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
+        SizedBox(
+          width: _buttonWidth(context),
           child: ElevatedButton.icon(
-            onPressed: (_saving || _selectedMachineId == null) ? null : _saveAll,
+            onPressed: (_saving || _selectedMachineId == null)
+                ? null
+                : _saveAll,
             icon: _saving
                 ? const SizedBox(
                     width: 18,
                     height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
                   )
                 : const Icon(Icons.save),
             label: Text(_saving ? 'Salvataggio...' : 'Salva'),
@@ -764,4 +826,12 @@ class _AdminMachineConfigPageState extends State<AdminMachineConfigPage> {
       ],
     );
   }
+
+  double _fieldWidth(BuildContext context) => context.responsive.isCompact
+      ? context.responsive.width - (AppSpacing.md * 4)
+      : 220;
+
+  double _buttonWidth(BuildContext context) => context.responsive.isCompact
+      ? context.responsive.width - (AppSpacing.md * 2)
+      : 220;
 }

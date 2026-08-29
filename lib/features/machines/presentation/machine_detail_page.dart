@@ -1,7 +1,10 @@
 // lib/features/machines/presentation/machine_detail_page.dart
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../../../core/ui/app_design_system.dart';
 
 /// ===============================================================
 /// MachineDetailPage (Consumabili a dosi)
@@ -15,17 +18,21 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///     current_units  (rimanente)
 ///     is_enabled
 ///
-/// - Mostra una griglia 2x2 di mini-cerchi (coffee/milk/powder/water).
-/// - Per ogni consumabile abilitat0, mostra bottone singolo "Refill"
+/// - Mostra il solo fattore monitorato per il tipo macchina (hot/cold).
+/// - Per il fattore abilitato, mostra bottone singolo "Refill"
 ///   che chiama RPC:
 ///     perform_refill_consumable(p_machine_id, p_type)
 ///   (reset current_units = capacity_units in modo atomico lato DB)
 /// ===============================================================
 
-enum ConsumableType { coffee, milk, powder, water }
+enum ConsumableType { hot, cold, coffee, milk, powder, water }
 
 ConsumableType? consumableTypeFromDb(String s) {
   switch (s) {
+    case 'hot':
+      return ConsumableType.hot;
+    case 'cold':
+      return ConsumableType.cold;
     case 'coffee':
       return ConsumableType.coffee;
     case 'milk':
@@ -41,6 +48,10 @@ ConsumableType? consumableTypeFromDb(String s) {
 
 String consumableTypeToDb(ConsumableType t) {
   switch (t) {
+    case ConsumableType.hot:
+      return 'hot';
+    case ConsumableType.cold:
+      return 'cold';
     case ConsumableType.coffee:
       return 'coffee';
     case ConsumableType.milk:
@@ -54,6 +65,10 @@ String consumableTypeToDb(ConsumableType t) {
 
 String consumableLabel(ConsumableType t) {
   switch (t) {
+    case ConsumableType.hot:
+      return 'Caldo';
+    case ConsumableType.cold:
+      return 'Freddo';
     case ConsumableType.coffee:
       return 'Caffè';
     case ConsumableType.milk:
@@ -67,6 +82,10 @@ String consumableLabel(ConsumableType t) {
 
 IconData consumableIcon(ConsumableType t) {
   switch (t) {
+    case ConsumableType.hot:
+      return Icons.local_fire_department;
+    case ConsumableType.cold:
+      return Icons.ac_unit;
     case ConsumableType.coffee:
       return Icons.coffee;
     case ConsumableType.milk:
@@ -101,7 +120,8 @@ class ConsumableState {
     return p.clamp(0, 100);
   }
 
-  bool get isFull => isEnabled && capacityUnits > 0 && currentUnits >= capacityUnits;
+  bool get isFull =>
+      isEnabled && capacityUnits > 0 && currentUnits >= capacityUnits;
   bool get isConfigMissing => isEnabled && capacityUnits <= 0;
 
   factory ConsumableState.fromMap(Map<String, dynamic> map) {
@@ -152,10 +172,7 @@ class MachineHeaderModel {
 class MachineDetailPage extends StatefulWidget {
   final String machineId;
 
-  const MachineDetailPage({
-    super.key,
-    required this.machineId,
-  });
+  const MachineDetailPage({super.key, required this.machineId});
 
   @override
   State<MachineDetailPage> createState() => _MachineDetailPageState();
@@ -201,11 +218,14 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
 
       final list = (rows as List).cast<Map<String, dynamic>>();
       if (list.isEmpty) {
-        throw Exception('Macchina non trovata o nessun consumabile disponibile.');
+        throw Exception(
+          'Macchina non trovata o nessun consumabile disponibile.',
+        );
       }
 
       // Guardrail: l’utente deve essere l’assegnatario effettivo
-      final effectiveOperatorId = list.first['effective_operator_id'] as String?;
+      final effectiveOperatorId =
+          list.first['effective_operator_id'] as String?;
       if (effectiveOperatorId != null && effectiveOperatorId != user.id) {
         throw Exception('Non sei assegnato a questa macchina.');
       }
@@ -249,10 +269,10 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
 
   Color _colorForPercent(double percent) {
     // Soglie semplici e leggibili
-    if (percent <= 10) return Colors.black;
-    if (percent <= 20) return Colors.red;
-    if (percent <= 40) return Colors.orange;
-    return Colors.green;
+    if (percent <= 10) return AppColors.stopped;
+    if (percent <= 20) return AppColors.danger;
+    if (percent <= 40) return AppColors.warning;
+    return AppColors.success;
   }
 
   String _labelForPercent(double percent) {
@@ -273,14 +293,19 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
     });
 
     try {
-      await supabase.rpc('perform_refill_consumable', params: {
-        'p_machine_id': header.machineId,
-        'p_type': consumableTypeToDb(type),
-      });
+      await supabase.rpc(
+        'perform_refill_consumable',
+        params: {
+          'p_machine_id': header.machineId,
+          'p_type': consumableTypeToDb(type),
+        },
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Refill ${consumableLabel(type)} registrato.')),
+          SnackBar(
+            content: Text('Refill ${consumableLabel(type)} registrato.'),
+          ),
         );
       }
 
@@ -301,6 +326,8 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
   List<ConsumableType> _orderedTypes() {
     // Ordine fisso e coerente con UX
     return const [
+      ConsumableType.hot,
+      ConsumableType.cold,
       ConsumableType.coffee,
       ConsumableType.milk,
       ConsumableType.powder,
@@ -313,66 +340,110 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
     final header = _header;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(header?.machineCode ?? 'Macchina'),
-      ),
+      appBar: AppBar(title: Text(header?.machineCode ?? 'Macchina')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoading()
           : _error != null
-              ? Center(child: Text(_error!))
-              : header == null
-                  ? const Center(child: Text('Macchina non trovata.'))
-                  : RefreshIndicator(
-                      onRefresh: _loadAll,
-                      child: ListView(
-                        padding: const EdgeInsets.all(16),
-                        children: [
-                          _buildInfoCard(header),
-                          const SizedBox(height: 16),
-                          _buildConsumablesGrid(),
-                          const SizedBox(height: 16),
-                          if (_refillError != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8),
-                              child: Text(
-                                _refillError!,
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ),
-                          const SizedBox(height: 24),
-                        ],
+          ? AppErrorState(message: _error!, onRetry: _loadAll)
+          : header == null
+          ? const AppEmptyState(
+              title: 'Macchina non trovata',
+              icon: Icons.coffee_maker_outlined,
+            )
+          : RefreshIndicator(
+              onRefresh: _loadAll,
+              child: ListView(
+                padding: context.responsive.pagePadding,
+                children: [
+                  _buildInfoCard(header),
+                  const SizedBox(height: AppSpacing.md),
+                  _buildCalibrationCard(header),
+                  const SizedBox(height: AppSpacing.md),
+                  _buildConsumablesGrid(),
+                  const SizedBox(height: AppSpacing.md),
+                  if (_refillError != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: AppSpacing.xs),
+                      child: AppStatusPill(
+                        label: _refillError!,
+                        color: AppColors.danger,
+                        icon: Icons.error_outline,
                       ),
                     ),
+                  const SizedBox(height: AppSpacing.lg),
+                ],
+              ),
+            ),
     );
   }
 
   Widget _buildInfoCard(MachineHeaderModel header) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Informazioni macchina',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _infoRow('Cliente', (header.clientName ?? '').isEmpty ? '-' : header.clientName!),
-            if ((header.siteName ?? '').isNotEmpty) ...[
-              const SizedBox(height: 4),
-              _infoRow('Sede', header.siteName!),
-            ],
-            const SizedBox(height: 4),
-            _infoRow('Codice macchina', header.machineCode),
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Informazioni macchina',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _infoRow(
+            'Cliente',
+            (header.clientName ?? '').isEmpty ? '-' : header.clientName!,
+          ),
+          if ((header.siteName ?? '').isNotEmpty) ...[
+            const SizedBox(height: AppSpacing.xxs),
+            _infoRow('Sede', header.siteName!),
           ],
-        ),
+          const SizedBox(height: AppSpacing.xxs),
+          _infoRow('Codice macchina', header.machineCode),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCalibrationCard(MachineHeaderModel header) {
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.md),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.petroleumSoft,
+              borderRadius: BorderRadius.circular(AppRadii.md),
+            ),
+            child: const Icon(Icons.tune, color: AppColors.petroleum),
+          ),
+          const SizedBox(width: AppSpacing.md),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Calibrazione',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: AppSpacing.xxs),
+                Text(
+                  'BLE IC01',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          FilledButton.icon(
+            onPressed: () =>
+                context.push('/machines/${header.machineId}/calibration'),
+            icon: const Icon(Icons.bluetooth_searching),
+            label: const Text('Apri'),
+          ),
+        ],
       ),
     );
   }
@@ -380,7 +451,6 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
   Widget _buildConsumablesGrid() {
     final types = _orderedTypes();
 
-    // Se water è disabled/non presente, la card rimane nascosta
     final items = <ConsumableType>[];
     for (final t in types) {
       final cs = _consumables[t];
@@ -390,36 +460,61 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
     }
 
     if (items.isEmpty) {
-      return const Center(child: Text('Nessun consumabile configurato per questa macchina.'));
+      return const AppEmptyState(
+        title: 'Nessun consumabile configurato',
+        icon: Icons.inventory_2_outlined,
+      );
     }
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        // 2 colonne quasi sempre; se desktop molto largo, al massimo 4 in riga.
-        final w = constraints.maxWidth;
-        final crossAxisCount = w >= 900 ? 4 : (w >= 520 ? 2 : 2);
+        if (items.length == 1) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Fattore monitorato (dosi)',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 680),
+                  child: _buildConsumableCard(_consumables[items.first]!),
+                ),
+              ),
+            ],
+          );
+        }
+
+        final responsive = AppResponsive(constraints.maxWidth);
+        final crossAxisCount = responsive.columnsFor(
+          minTileWidth: 300,
+          maxColumns: 3,
+        );
+        final ratio = crossAxisCount == 1
+            ? 0.92
+            : crossAxisCount == 2
+            ? 0.82
+            : 0.9;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Serbatoi (dosi)',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              'Fattore monitorato (dosi)',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.sm),
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: items.length,
               gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: crossAxisCount,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                // card compatta e stabile su web/mobile
-                childAspectRatio: w >= 900 ? 1.2 : 1.05,
+                crossAxisSpacing: AppSpacing.sm,
+                mainAxisSpacing: AppSpacing.sm,
+                childAspectRatio: ratio,
               ),
               itemBuilder: (context, index) {
                 final type = items[index];
@@ -439,115 +534,121 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
     final label = _labelForPercent(percent);
 
     final isLoadingThis = _refillLoadingType == cs.type;
-    final canRefill = cs.isEnabled && !cs.isConfigMissing && !cs.isFull && !isLoadingThis;
+    final canRefill =
+        cs.isEnabled && !cs.isConfigMissing && !cs.isFull && !isLoadingThis;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            // Titolo riga: icona + label
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(consumableIcon(cs.type), size: 18, color: Colors.grey),
-                const SizedBox(width: 8),
-                Text(
-                  consumableLabel(cs.type),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
+    return AppSectionCard(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final gaugeSize = (constraints.maxWidth * 0.58).clamp(180.0, 320.0);
+          final strokeWidth = (gaugeSize * 0.075).clamp(12.0, 22.0);
+          final percentFontSize = (gaugeSize * 0.18).clamp(32.0, 56.0);
+          final labelFontSize = (gaugeSize * 0.09).clamp(16.0, 28.0);
 
-            // Cerchio con %
-            SizedBox(
-              width: 92,
-              height: 92,
-              child: Stack(
-                alignment: Alignment.center,
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SizedBox(
-                    width: 92,
-                    height: 92,
-                    child: CircularProgressIndicator(
-                      value: percent / 100.0,
-                      strokeWidth: 9,
-                      backgroundColor: color.withValues(alpha: 0.12),
-                      valueColor: AlwaysStoppedAnimation<Color>(color),
-                    ),
+                  Icon(
+                    consumableIcon(cs.type),
+                    size: 24,
+                    color: AppColors.muted,
                   ),
-                  Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        '${percent.toStringAsFixed(0)}%',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        label,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: color,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(width: AppSpacing.xs),
+                  Text(
+                    consumableLabel(cs.type),
+                    style: Theme.of(context).textTheme.titleLarge,
                   ),
                 ],
               ),
-            ),
-
-            const SizedBox(height: 10),
-
-            // Dosi
-            Text(
-              cs.isConfigMissing
-                  ? 'Capacità non impostata'
-                  : '${cs.currentUnits} / ${cs.capacityUnits} dosi',
-              style: TextStyle(
-                fontSize: 12,
-                color: cs.isConfigMissing ? Colors.red : Colors.grey,
-                fontWeight: FontWeight.w500,
-              ),
-              textAlign: TextAlign.center,
-            ),
-
-            const Spacer(),
-
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: canRefill ? () => _refillOne(cs.type) : null,
-                icon: isLoadingThis
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
+              const SizedBox(height: AppSpacing.lg),
+              SizedBox(
+                width: gaugeSize,
+                height: gaugeSize,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    SizedBox(
+                      width: gaugeSize,
+                      height: gaugeSize,
+                      child: CircularProgressIndicator(
+                        value: percent / 100.0,
+                        strokeWidth: strokeWidth,
+                        strokeCap: StrokeCap.round,
+                        backgroundColor: color.withValues(alpha: 0.12),
+                        valueColor: AlwaysStoppedAnimation<Color>(color),
+                      ),
+                    ),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '${percent.toStringAsFixed(0)}%',
+                          style: TextStyle(
+                            fontSize: percentFontSize,
+                            fontWeight: FontWeight.w900,
+                          ),
                         ),
-                      )
-                    : const Icon(Icons.refresh, size: 18),
-                label: Text(
-                  cs.isFull
-                      ? 'Pieno'
-                      : cs.isConfigMissing
-                          ? 'Configura'
-                          : 'Refill',
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: labelFontSize,
+                            fontWeight: FontWeight.w800,
+                            color: color,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
               ),
-            ),
-          ],
-        ),
+              const SizedBox(height: AppSpacing.lg),
+              Text(
+                cs.isConfigMissing
+                    ? 'Capacità non impostata'
+                    : '${cs.currentUnits} / ${cs.capacityUnits} dosi',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: cs.isConfigMissing
+                      ? AppColors.danger
+                      : AppColors.muted,
+                  fontWeight: FontWeight.w700,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton.icon(
+                    onPressed: canRefill ? () => _refillOne(cs.type) : null,
+                    icon: isLoadingThis
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.refresh, size: 22),
+                    label: Text(
+                      cs.isFull
+                          ? 'Pieno'
+                          : cs.isConfigMissing
+                          ? 'Configura'
+                          : 'Refill',
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -557,23 +658,20 @@ class _MachineDetailPageState extends State<MachineDetailPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 120,
+          width: context.responsive.isCompact ? 104 : 140,
           child: Text(
             '$label:',
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w500,
-              color: Colors.grey,
+              color: AppColors.muted,
             ),
           ),
         ),
         Expanded(
           child: Text(
             value,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-            ),
+            style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
           ),
         ),
       ],

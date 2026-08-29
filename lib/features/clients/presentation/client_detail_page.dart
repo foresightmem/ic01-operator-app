@@ -16,6 +16,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/ui/app_design_system.dart';
+import '../../onboarding/data/customer_machine_onboarding_service.dart';
+import '../../onboarding/presentation/onboarding_dialogs.dart';
+
 /// Modello per rappresentare una macchina di un cliente nella lista
 class ClientMachine {
   final String machineId;
@@ -38,7 +42,7 @@ class ClientMachine {
     if (fill <= 20) return 'red';
     if (fill <= 40) return 'yellow';
     return 'green';
-    }
+  }
 
   factory ClientMachine.fromEffectiveMap(Map<String, dynamic> map) {
     final fill = (map['current_fill_percent'] as num?)?.toDouble() ?? 0.0;
@@ -58,11 +62,7 @@ class ClientDetailPage extends StatefulWidget {
   final String clientId;
   final String? clientName;
 
-  const ClientDetailPage({
-    super.key,
-    required this.clientId,
-    this.clientName,
-  });
+  const ClientDetailPage({super.key, required this.clientId, this.clientName});
 
   @override
   State<ClientDetailPage> createState() => _ClientDetailPageState();
@@ -102,18 +102,61 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
     });
   }
 
+  Future<void> _deleteClient() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Elimina cliente'),
+        content: const Text(
+          'Puoi eliminare solo clienti senza macchine, ticket o visite. Continuare?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await CustomerMachineOnboardingService().deleteClient(widget.clientId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Cliente eliminato.')));
+      context.go('/dashboard');
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            onboardingUserMessage(error, OnboardingAction.deleteClient),
+          ),
+        ),
+      );
+    }
+  }
+
   Color _stateColor(String state) {
     switch (state) {
       case 'green':
-        return Colors.green;
+        return AppColors.success;
       case 'yellow':
-        return Colors.orange;
+        return AppColors.warning;
       case 'red':
-        return Colors.red;
+        return AppColors.danger;
       case 'black':
-        return Colors.black;
+        return AppColors.stopped;
       default:
-        return Colors.grey;
+        return AppColors.muted;
     }
   }
 
@@ -139,32 +182,69 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
+        actions: [
+          IconButton(
+            tooltip: 'Nuova sede',
+            icon: const Icon(Icons.add_location_alt_outlined),
+            onPressed: () async {
+              final created = await showCreateSiteDialog(
+                context,
+                clientId: widget.clientId,
+              );
+              if (created && mounted) {
+                _refreshMachines();
+              }
+            },
+          ),
+          IconButton(
+            tooltip: 'Nuova macchina',
+            icon: const Icon(Icons.add_business),
+            onPressed: () async {
+              final created = await showCreateMachineDialog(
+                context,
+                initialClientId: widget.clientId,
+              );
+              if (created && mounted) {
+                _refreshMachines();
+              }
+            },
+          ),
+          IconButton(
+            tooltip: 'Elimina cliente',
+            icon: const Icon(Icons.delete_outline),
+            onPressed: _deleteClient,
+          ),
+        ],
       ),
       body: FutureBuilder<List<ClientMachine>>(
         future: _futureMachines,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+            return const AppLoading();
           }
 
           if (snapshot.hasError) {
-            return Center(
-              child: Text('Errore nel caricamento: ${snapshot.error}'),
+            return AppErrorState(
+              message: 'Errore nel caricamento: ${snapshot.error}',
+              onRetry: _refreshMachines,
             );
           }
 
           final machines = snapshot.data ?? [];
 
           if (machines.isEmpty) {
-            return const Center(
-              child: Text('Nessuna macchina trovata per questo cliente.'),
+            return const AppEmptyState(
+              title: 'Nessuna macchina trovata',
+              message: 'Aggiungi una sede o una macchina dal menu in alto.',
+              icon: Icons.coffee_maker_outlined,
             );
           }
 
           return ListView.separated(
-            padding: const EdgeInsets.all(16),
+            padding: context.responsive.pagePadding,
             itemCount: machines.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            separatorBuilder: (context, index) =>
+                const SizedBox(height: AppSpacing.sm),
             itemBuilder: (context, index) {
               final m = machines[index];
               final color = _stateColor(m.state);
@@ -173,19 +253,22 @@ class _ClientDetailPageState extends State<ClientDetailPage> {
               return Card(
                 child: ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: color,
+                    backgroundColor: color.withValues(alpha: 0.12),
                     child: Text(
                       '${m.currentFillPercent.toStringAsFixed(0)}%',
-                      style: const TextStyle(
-                        color: Colors.white,
+                      style: TextStyle(
+                        color: color,
                         fontSize: 11,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
-                  title: Text(m.code),
-                  subtitle: Text(
-                    '${m.siteName}\nStato: $label (${m.state})',
+                  title: Text(
+                    m.code,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
+                  subtitle: Text('${m.siteName}\nStato: $label (${m.state})'),
+                  trailing: const Icon(Icons.chevron_right),
                   isThreeLine: true,
                   onTap: () async {
                     await context.push('/machines/${m.machineId}');

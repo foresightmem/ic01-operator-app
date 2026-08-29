@@ -16,6 +16,8 @@
 /// ===============================================================
 library;
 
+import 'dart:async';
+
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -24,6 +26,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app/app.dart';
 import 'app/env.dart';
 import 'core/services/push_notifications_service.dart';
+
 /// Entry point dell'applicazione IC-01 Refill.
 ///
 /// - Inizializza il binding di Flutter.
@@ -37,7 +40,7 @@ void main() async {
     anonKey: AppEnv.supabaseAnonKey,
   );
 
-  await PushNotificationsService.instance.init();
-
   runApp(const ProviderScope(child: IC01App()));
+
+  unawaited(PushNotificationsService.instance.init());
 }
