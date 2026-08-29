@@ -90,5 +90,17 @@ void main() {
         'Impossibile creare il cliente. Riprova oppure contatta l\'amministratore.',
       );
     });
+
+    test('maps Google Places function errors to configuration message', () {
+      final placesDenied = FunctionException(
+        status: 502,
+        details: {'google_status': 'PERMISSION_DENIED'},
+      );
+
+      expect(
+        onboardingUserMessage(placesDenied, OnboardingAction.load),
+        'Ricerca indirizzi non configurata correttamente.',
+      );
+    });
   });
 }

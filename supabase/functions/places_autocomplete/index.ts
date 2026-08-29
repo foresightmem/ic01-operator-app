@@ -41,6 +41,43 @@ function jsonResponse(body: Record<string, unknown>, status = 200): Response {
   });
 }
 
+function logDiagnostic(message: string, fields: Record<string, unknown> = {}) {
+  console.log(`[AddressAutocomplete] ${message}`, fields);
+}
+
+async function googleErrorResponse(
+  response: Response,
+  logKey: string,
+  userMessage: string,
+): Promise<Response> {
+  const text = await response.text();
+  let googleStatus: string | null = null;
+  let googleMessage: string | null = null;
+
+  try {
+    const payload = JSON.parse(text) as Record<string, unknown>;
+    const error = payload.error as Record<string, unknown> | undefined;
+    googleStatus = readText(error?.status) || null;
+    googleMessage = readText(error?.message) || null;
+  } catch (_) {
+    googleMessage = text.slice(0, 240);
+  }
+
+  console.error(`[AddressAutocomplete] ${logKey}`, {
+    http_status: response.status,
+    google_status: googleStatus,
+    google_message: googleMessage,
+  });
+
+  return jsonResponse(
+    {
+      message: userMessage,
+      google_status: googleStatus,
+    },
+    502,
+  );
+}
+
 function readText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -196,11 +233,14 @@ function predictionsFromGoogle(data: Record<string, unknown>) {
 async function autocomplete(payload: AutocompletePayload): Promise<Response> {
   const input = readText(payload.input);
   const sessionToken = readText(payload.sessionToken);
+  logDiagnostic("query", { input_length: input.length });
 
   if (input.length < 3) {
+    logDiagnostic("query too short");
     return jsonResponse({ predictions: [] });
   }
 
+  logDiagnostic("request started", { action: "autocomplete" });
   const response = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
     method: "POST",
     headers: {
@@ -217,17 +257,19 @@ async function autocomplete(payload: AutocompletePayload): Promise<Response> {
       includedRegionCodes: ["it"],
     }),
   });
+  logDiagnostic("HTTP", { status: response.status, action: "autocomplete" });
 
   if (!response.ok) {
-    console.error("google_places_autocomplete_failed", await response.text());
-    return jsonResponse(
-      { message: "Ricerca indirizzi temporaneamente non disponibile." },
-      502,
+    return await googleErrorResponse(
+      response,
+      "google_places_autocomplete_failed",
+      "Ricerca indirizzi temporaneamente non disponibile.",
     );
   }
 
   const data = await response.json();
   const predictions = predictionsFromGoogle(data).slice(0, 6);
+  logDiagnostic("suggestions", { count: predictions.length });
 
   return jsonResponse({ predictions });
 }
@@ -247,18 +289,20 @@ async function detailsForPlace(
   }
   url.searchParams.set("languageCode", "it");
 
+  logDiagnostic("request started", { action: "details" });
   const response = await fetch(url, {
     headers: {
       "x-goog-api-key": googleApiKey,
       "x-goog-fieldmask": "id,formattedAddress,addressComponents,location",
     },
   });
+  logDiagnostic("HTTP", { status: response.status, action: "details" });
 
   if (!response.ok) {
-    console.error("google_place_details_failed", await response.text());
-    return jsonResponse(
-      { message: "Indirizzo temporaneamente non disponibile." },
-      502,
+    return await googleErrorResponse(
+      response,
+      "google_place_details_failed",
+      "Indirizzo temporaneamente non disponibile.",
     );
   }
 
@@ -303,11 +347,13 @@ async function details(payload: DetailsPayload): Promise<Response> {
 async function resolveInput(payload: ResolvePayload): Promise<Response> {
   const input = readText(payload.input);
   const sessionToken = readText(payload.sessionToken);
+  logDiagnostic("query", { action: "resolve", input_length: input.length });
 
   if (input.length < 3) {
     return jsonResponse({ address: input, city: null });
   }
 
+  logDiagnostic("request started", { action: "resolve_autocomplete" });
   const response = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
     method: "POST",
     headers: {
@@ -324,9 +370,14 @@ async function resolveInput(payload: ResolvePayload): Promise<Response> {
       includedRegionCodes: ["it"],
     }),
   });
+  logDiagnostic("HTTP", { status: response.status, action: "resolve_autocomplete" });
 
   if (!response.ok) {
-    console.error("google_places_resolve_autocomplete_failed", await response.text());
+    await googleErrorResponse(
+      response,
+      "google_places_resolve_autocomplete_failed",
+      "Indirizzo temporaneamente non disponibile.",
+    );
     return jsonResponse({ address: input, city: null });
   }
 
@@ -349,7 +400,7 @@ serve(async (req) => {
   }
 
   if (!googleApiKey) {
-    console.error("missing_google_maps_api_key");
+    console.error("[AddressAutocomplete] API key missing");
     return jsonResponse(
       { message: "Ricerca indirizzi non configurata." },
       500,
@@ -357,6 +408,7 @@ serve(async (req) => {
   }
 
   if (jwtRole(req) !== "authenticated") {
+    console.error("[AddressAutocomplete] unauthorized request");
     return jsonResponse({ message: "Accesso non autorizzato." }, 401);
   }
 

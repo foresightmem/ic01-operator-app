@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/ui/app_design_system.dart';
@@ -7,6 +8,12 @@ import '../data/customer_machine_onboarding_service.dart';
 
 String _newAddressSessionToken() =>
     'addr-${DateTime.now().microsecondsSinceEpoch}-${Object().hashCode}';
+
+void _logAddressAutocompleteUi(String message) {
+  if (kDebugMode) {
+    debugPrint('[AddressAutocomplete] $message');
+  }
+}
 
 double _dialogContentWidth(BuildContext context, double desktopWidth) {
   final responsive = context.responsive;
@@ -796,6 +803,8 @@ class _AddressAutocompleteFieldState extends State<_AddressAutocompleteField> {
   List<AddressSuggestion> _suggestions = [];
   bool _loading = false;
   bool _applyingSelection = false;
+  String? _statusMessage;
+  bool _statusIsError = false;
 
   @override
   void dispose() {
@@ -814,11 +823,14 @@ class _AddressAutocompleteFieldState extends State<_AddressAutocompleteField> {
       setState(() {
         _suggestions = [];
         _loading = false;
+        _statusMessage = null;
+        _statusIsError = false;
       });
       return;
     }
 
     _debounce = Timer(const Duration(milliseconds: 350), () {
+      _logAddressAutocompleteUi('debounce completed');
       _search(input);
     });
   }
@@ -826,6 +838,8 @@ class _AddressAutocompleteFieldState extends State<_AddressAutocompleteField> {
   Future<void> _search(String input) async {
     setState(() {
       _loading = true;
+      _statusMessage = null;
+      _statusIsError = false;
     });
 
     try {
@@ -837,13 +851,19 @@ class _AddressAutocompleteFieldState extends State<_AddressAutocompleteField> {
       setState(() {
         _suggestions = suggestions;
         _loading = false;
+        _statusMessage = suggestions.isEmpty
+            ? 'Nessun indirizzo trovato.'
+            : null;
+        _statusIsError = false;
       });
     } catch (e) {
-      onboardingUserMessage(e, OnboardingAction.load);
+      final message = onboardingUserMessage(e, OnboardingAction.load);
       if (!mounted) return;
       setState(() {
         _suggestions = [];
         _loading = false;
+        _statusMessage = message;
+        _statusIsError = true;
       });
     }
   }
@@ -854,6 +874,8 @@ class _AddressAutocompleteFieldState extends State<_AddressAutocompleteField> {
     setState(() {
       _loading = true;
       _suggestions = [];
+      _statusMessage = null;
+      _statusIsError = false;
     });
 
     try {
@@ -931,6 +953,19 @@ class _AddressAutocompleteFieldState extends State<_AddressAutocompleteField> {
                   onTap: () => _select(suggestion),
                 );
               },
+            ),
+          ),
+        if (_statusMessage != null && _suggestions.isEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                _statusMessage!,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: _statusIsError ? AppColors.danger : AppColors.muted,
+                ),
+              ),
             ),
           ),
       ],

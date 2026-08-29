@@ -41,6 +41,26 @@ bool isValidMachineCodeInput(String value) {
   return normalizeMachineCodeInput(value).isNotEmpty;
 }
 
+void _logAddressAutocomplete(String message) {
+  if (kDebugMode) {
+    debugPrint('[AddressAutocomplete] $message');
+  }
+}
+
+String? _functionErrorCode(dynamic details) {
+  if (details is Map) {
+    final googleStatus = details['google_status'];
+    final message = details['message'];
+    if (googleStatus is String && googleStatus.trim().isNotEmpty) {
+      return googleStatus.trim();
+    }
+    if (message is String && message.trim().isNotEmpty) {
+      return message.trim();
+    }
+  }
+  return null;
+}
+
 String onboardingUserMessage(Object error, OnboardingAction action) {
   debugPrint('Onboarding ${action.name} failed: $error');
 
@@ -69,6 +89,23 @@ String onboardingUserMessage(Object error, OnboardingAction action) {
     }
     if (error.message.toLowerCase().contains('non cancellabile')) {
       return 'Questo cliente non può essere eliminato perché contiene macchine, ticket o visite.';
+    }
+  }
+
+  if (error is FunctionException) {
+    final code = _functionErrorCode(error.details);
+    debugPrint(
+      'Supabase Function status=${error.status} '
+      'reason=${error.reasonPhrase} code=${code ?? 'n/a'}',
+    );
+
+    if (error.status == 401 || error.status == 403) {
+      return 'Non hai i permessi per completare questa operazione.';
+    }
+    if (code == 'PERMISSION_DENIED' ||
+        code == 'REQUEST_DENIED' ||
+        code == 'API_KEY_INVALID') {
+      return 'Ricerca indirizzi non configurata correttamente.';
     }
   }
 
@@ -306,49 +343,73 @@ class CustomerMachineOnboardingService {
     required String input,
     required String sessionToken,
   }) async {
-    if (normalizedRequiredText(input).length < 3) {
+    final normalizedInput = normalizedRequiredText(input);
+    _logAddressAutocomplete('query="$normalizedInput"');
+
+    if (normalizedInput.length < 3) {
+      _logAddressAutocomplete('query too short');
       return const [];
     }
 
-    final response = await _client.functions.invoke(
-      'places_autocomplete',
-      body: {
-        'action': 'autocomplete',
-        'input': input,
-        'sessionToken': sessionToken,
-      },
-    );
+    try {
+      _logAddressAutocomplete('request started action=autocomplete');
+      final response = await _client.functions.invoke(
+        'places_autocomplete',
+        body: {
+          'action': 'autocomplete',
+          'input': normalizedInput,
+          'sessionToken': sessionToken,
+        },
+      );
+      _logAddressAutocomplete('HTTP ${response.status}');
 
-    final data = (response.data as Map).cast<String, dynamic>();
-    final predictions = (data['predictions'] as List? ?? const [])
-        .cast<Map<String, dynamic>>();
+      final data = (response.data as Map).cast<String, dynamic>();
+      final predictions = (data['predictions'] as List? ?? const [])
+          .cast<Map<String, dynamic>>();
 
-    return predictions
-        .map(AddressSuggestion.fromMap)
-        .where(
-          (suggestion) =>
-              suggestion.placeId.isNotEmpty &&
-              suggestion.description.isNotEmpty,
-        )
-        .toList();
+      final suggestions = predictions
+          .map(AddressSuggestion.fromMap)
+          .where(
+            (suggestion) =>
+                suggestion.placeId.isNotEmpty &&
+                suggestion.description.isNotEmpty,
+          )
+          .toList();
+      _logAddressAutocomplete('suggestions=${suggestions.length}');
+      return suggestions;
+    } on FunctionException catch (error) {
+      _logAddressAutocomplete(
+        'HTTP ${error.status} google_error=${_functionErrorCode(error.details) ?? 'n/a'}',
+      );
+      rethrow;
+    }
   }
 
   Future<ResolvedAddress> resolveAddressSuggestion({
     required String placeId,
     required String sessionToken,
   }) async {
-    final response = await _client.functions.invoke(
-      'places_autocomplete',
-      body: {
-        'action': 'details',
-        'placeId': placeId,
-        'sessionToken': sessionToken,
-      },
-    );
+    try {
+      _logAddressAutocomplete('request started action=details');
+      final response = await _client.functions.invoke(
+        'places_autocomplete',
+        body: {
+          'action': 'details',
+          'placeId': placeId,
+          'sessionToken': sessionToken,
+        },
+      );
+      _logAddressAutocomplete('HTTP ${response.status}');
 
-    return ResolvedAddress.fromMap(
-      (response.data as Map).cast<String, dynamic>(),
-    );
+      return ResolvedAddress.fromMap(
+        (response.data as Map).cast<String, dynamic>(),
+      );
+    } on FunctionException catch (error) {
+      _logAddressAutocomplete(
+        'HTTP ${error.status} google_error=${_functionErrorCode(error.details) ?? 'n/a'}',
+      );
+      rethrow;
+    }
   }
 
   Future<ResolvedAddress> resolveTypedAddress({
@@ -365,18 +426,27 @@ class CustomerMachineOnboardingService {
       );
     }
 
-    final response = await _client.functions.invoke(
-      'places_autocomplete',
-      body: {
-        'action': 'resolve',
-        'input': normalizedInput,
-        'sessionToken': sessionToken,
-      },
-    );
+    try {
+      _logAddressAutocomplete('request started action=resolve');
+      final response = await _client.functions.invoke(
+        'places_autocomplete',
+        body: {
+          'action': 'resolve',
+          'input': normalizedInput,
+          'sessionToken': sessionToken,
+        },
+      );
+      _logAddressAutocomplete('HTTP ${response.status}');
 
-    return ResolvedAddress.fromMap(
-      (response.data as Map).cast<String, dynamic>(),
-    );
+      return ResolvedAddress.fromMap(
+        (response.data as Map).cast<String, dynamic>(),
+      );
+    } on FunctionException catch (error) {
+      _logAddressAutocomplete(
+        'HTTP ${error.status} google_error=${_functionErrorCode(error.details) ?? 'n/a'}',
+      );
+      rethrow;
+    }
   }
 
   Future<CreatedClientSite> createClientWithPrimarySite({
