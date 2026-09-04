@@ -31,6 +31,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../core/auth/app_role_service.dart';
+import '../../../core/navigation/navigation_action_sheet.dart';
+import '../../../core/navigation/navigation_launcher.dart';
+import '../../../core/navigation/navigation_permissions.dart';
 import '../../../core/ui/app_design_system.dart';
 import '../../public_support/presentation/public_support_page.dart';
 
@@ -254,6 +258,8 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
   Widget _buildDetail() {
     final t = _ticket!;
     final statusColor = _statusColor(t['status']);
+    final canOpenNavigator = canUseExternalNavigation(AppRole.fromValue(_role));
+    final siteDestination = _siteDestinationFromTicket(t);
 
     return ListView(
       padding: context.responsive.pagePadding,
@@ -286,6 +292,10 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
                   'Motivo',
                   publicTicketReasonLabel(t['reason'] as String),
                 ),
+              if (canOpenNavigator && siteDestination.canNavigate) ...[
+                const SizedBox(height: AppSpacing.sm),
+                SiteNavigationButton(destination: siteDestination),
+              ],
             ],
           ),
         ),
@@ -348,6 +358,15 @@ class _TicketDetailPageState extends State<TicketDetailPage> {
               : _buildActions(t),
         ),
       ],
+    );
+  }
+
+  SiteNavigationDestination _siteDestinationFromTicket(Map<String, dynamic> t) {
+    return SiteNavigationDestination(
+      siteId: t['site_id'] as String?,
+      siteName: t['site_name'] as String? ?? 'Sede',
+      address: t['site_address'] as String?,
+      city: t['site_city'] as String?,
     );
   }
 
