@@ -10,6 +10,13 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 
 const MAX_SKEW_S = 600;
 
+function jsonError(code: string, status = 500): Response {
+  return new Response(JSON.stringify({ error: code }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
@@ -120,13 +127,11 @@ serve(async (req) => {
             : null,
         },
         { onConflict: "device_id" },
-      );
+    );
 
     if (statusErr) {
-      return new Response(
-        JSON.stringify({ error: "write_status", detail: statusErr }),
-        { status: 500, headers: { "content-type": "application/json" } },
-      );
+      console.error("write_status", statusErr);
+      return jsonError("write_status");
     }
 
     const counts = payload.counts ?? {};
@@ -160,10 +165,8 @@ serve(async (req) => {
       .maybeSingle();
 
     if (machineErr) {
-      return new Response(
-        JSON.stringify({ error: "load_machine", detail: machineErr }),
-        { status: 500, headers: { "content-type": "application/json" } },
-      );
+      console.error("load_machine", machineErr);
+      return jsonError("load_machine");
     }
 
     const factor = monitoringFactorForMode(machineRow?.temperature_mode);
@@ -177,10 +180,8 @@ serve(async (req) => {
       .maybeSingle();
 
     if (consErr) {
-      return new Response(
-        JSON.stringify({ error: "load_consumables", detail: consErr }),
-        { status: 500, headers: { "content-type": "application/json" } },
-      );
+      console.error("load_consumables", consErr);
+      return jsonError("load_consumables");
     }
 
     const warnings: string[] = [];
@@ -204,10 +205,8 @@ serve(async (req) => {
           .update({ current_units: currentUnits })
           .eq("id", row.id);
         if (updateErr) {
-          return new Response(
-            JSON.stringify({ error: "update_consumables", detail: updateErr }),
-            { status: 500, headers: { "content-type": "application/json" } },
-          );
+          console.error("update_consumables", updateErr);
+          return jsonError("update_consumables");
         }
       }
     }
@@ -222,9 +221,7 @@ serve(async (req) => {
       { headers: { "content-type": "application/json" } },
     );
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: "unhandled", detail: String(err) }),
-      { status: 500, headers: { "content-type": "application/json" } },
-    );
+    console.error("unhandled", err);
+    return jsonError("unhandled");
   }
 });

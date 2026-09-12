@@ -185,6 +185,6 @@ class PushNotificationsService {
       'device_id': _deviceId,
       'platform': platform,
       'token': token,
-    }, onConflict: 'device_id,platform');
+    }, onConflict: 'user_id,device_id,platform');
   }
 }

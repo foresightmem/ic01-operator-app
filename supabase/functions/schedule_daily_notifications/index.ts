@@ -17,6 +17,13 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false },
 });
 
+function jsonError(code: string, status = 500): Response {
+  return new Response(JSON.stringify({ error: code }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 function isAuthorized(req: Request): boolean {
   const auth = req.headers.get("authorization") ?? "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -122,10 +129,8 @@ serve(async (req) => {
       .eq("enabled", true);
 
     if (settingsErr) {
-      return new Response(
-        JSON.stringify({ error: "load_settings", detail: settingsErr }),
-        { status: 500, headers: { "content-type": "application/json" } },
-      );
+      console.error("load_settings", settingsErr);
+      return jsonError("load_settings");
     }
 
     const items = (settings ?? []) as NotificationSetting[];
@@ -164,9 +169,7 @@ serve(async (req) => {
       headers: { "content-type": "application/json" },
     });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: "unhandled", detail: String(err) }),
-      { status: 500, headers: { "content-type": "application/json" } },
-    );
+    console.error("unhandled", err);
+    return jsonError("unhandled");
   }
 });

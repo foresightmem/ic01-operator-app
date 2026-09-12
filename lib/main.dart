@@ -35,6 +35,8 @@ import 'core/services/push_notifications_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  AppEnv.validate();
+
   await Supabase.initialize(
     url: AppEnv.supabaseUrl,
     anonKey: AppEnv.supabaseAnonKey,

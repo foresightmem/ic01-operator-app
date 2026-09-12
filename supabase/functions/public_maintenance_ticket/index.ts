@@ -11,7 +11,6 @@ type PublicTicketPayload = {
 type RpcResult = {
   ok?: boolean;
   duplicate?: boolean;
-  ticket_id?: string;
   code?: string;
   message?: string;
 };
@@ -103,9 +102,9 @@ async function logRequest(
 function messageForCode(code?: string): string {
   switch (code) {
     case "machine_not_found":
-      return "Codice macchina non trovato. Controlla il codice e riprova.";
     case "machine_inactive":
-      return "Questa macchina non risulta disponibile per nuove segnalazioni.";
+      return "Richiesta ricevuta. Se il codice macchina è valido, " +
+        "la segnalazione sarà presa in carico.";
     case "invalid_reason":
       return "Seleziona un motivo valido.";
     case "missing_machine_code":
@@ -206,16 +205,29 @@ serve(async (req) => {
     await logRequest(ipHash, machineCodeHash, result.ok === true);
 
     if (!result.ok) {
+      if (
+        result.code === "machine_not_found" ||
+        result.code === "machine_inactive"
+      ) {
+        return jsonResponse(
+          {
+            ok: true,
+            duplicate: false,
+            message: messageForCode(result.code),
+          },
+          202,
+        );
+      }
+
       return jsonResponse(
         { ok: false, message: messageForCode(result.code) },
-        result.code === "machine_not_found" ? 404 : 400,
+        400,
       );
     }
 
     return jsonResponse({
       ok: true,
       duplicate: result.duplicate === true,
-      ticket_id: result.ticket_id,
       message: result.message ?? "Segnalazione inviata correttamente.",
     });
   } catch (err) {
@@ -229,4 +241,3 @@ serve(async (req) => {
     );
   }
 });
-

@@ -979,3 +979,41 @@ Dependencies: run `001` first. Apply emergency exposure fixes before functional 
 - [ ] All functional blockers fixed without broad policies.
 - [ ] Security advisors reviewed with no unaccepted ERROR findings.
 - [ ] Auth hardening enabled for password protection and admin accounts.
+
+## 18. REMEDIATION STATUS - 2026-09-12
+
+Remediation is now active on Git branch `security-rls-remediation` and Supabase
+branch `security-rls-remediation`. Production Supabase project
+`atpfgkhechvdijqnflnc` was inspected read-only and was not modified.
+
+The first empty Supabase branch was renamed to
+`security-rls-remediation-empty` (`mljqeycmofhtqhbrppiw`) during setup and is
+not used for remediation. The latest branch list shows only `main` and the
+active data-cloned remediation branch. A new persistent branch named
+`security-rls-remediation` was created from main with `with_data=true`, project
+ref `gydjrznapplpgvmrcymq`, and reached `FUNCTIONS_DEPLOYED` /
+`ACTIVE_HEALTHY`.
+
+Branch row counts were verified to match main for all 26 `public` base tables
+before remediation. After the DB migrations and Edge Function deploys, row
+counts still match main for the application tables; only schema/grant/function
+metadata changed.
+
+| Finding | Severity | Remediation status | Migration / Code | Verification |
+| --- | --- | --- | --- | --- |
+| SEC-001 | P0 | FIXED ON BRANCH | `20260911102427_emergency_enable_rls_on_public_exposed_tables.sql` enables/forces RLS and removes broad grants for the five exposed tables. | Branch advisor no longer reports `policy_exists_rls_disabled` or `rls_disabled_in_public`; catalog confirms RLS forced and anon denied. |
+| SEC-002 | P1 | FIXED ON BRANCH | `20260911102433_secure_views_and_api_grants.sql` sets affected views to `security_invoker=true` and removes anon grants. | Branch advisor no longer reports `security_definer_view`; catalog confirms `security_invoker=true` for all audited views. |
+| SEC-003 | P1 | FIXED FOR ANON / ACCEPTED RESIDUAL FOR AUTH | `20260911102433_secure_views_and_api_grants.sql` removes anon grants from app data objects. | Branch advisor no longer reports anon GraphQL exposure. Authenticated GraphQL visibility remains because Flutter uses authenticated REST/Data API grants; RLS is the enforcement layer. |
+| SEC-004 | P1 | FIXED FOR ANON / REVIEWED FOR AUTH | `20260911102447_secure_security_definer_execute_surface.sql` revokes anon execution on all public `SECURITY DEFINER` functions and allowlists intended authenticated RPCs. | Branch advisor no longer reports `anon_security_definer_function_executable`; catalog confirms refill/dispense/helper grants are narrowed. |
+| SEC-005 | P1 | FIXED ON BRANCH | `20260911102447_secure_security_definer_execute_surface.sql` adds current-user helpers and revokes direct execute on caller-supplied helper RPCs; `20260911110112_align_policy_helpers_and_push_token_roles.sql` removes the remaining policy reference to the old helper. | Catalog confirms caller-supplied helper RPCs are not executable by anon/authenticated. |
+| SEC-006 | P2 | FIXED IN SOURCE | `lib/app/env.dart` uses `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` Dart defines; `lib/main.dart` validates config. | `dart analyze` and `flutter test` passed; secret pattern scan found no legacy Supabase JWT/URL in `lib` or functions. Key rotation remains an operational step outside this branch. |
+| SEC-007 | P1 | FIXED ON BRANCH | `20260911102440_lock_profile_and_ticket_mutations.sql` removes public-client profile mutation grants and self-update policy names. | Catalog confirms `profiles` has no anon grants and authenticated cannot insert/update/delete directly. |
+| SEC-008 | P2 / Functional blocker | FIXED ON BRANCH | `20260911102454_admin_functional_rls_and_push_tokens.sql` adds org-scoped admin policies for machine config and coverage tables; `20260911110015_tighten_machine_table_grants.sql` closes residual machine write grants. | Catalog confirms admin policies exist, direct machine insert/delete is revoked, and only `temperature_mode`/`updated_at` are column-updatable. |
+| SEC-009 | P2 / Functional blocker | FIXED ON BRANCH | `20260911102440_lock_profile_and_ticket_mutations.sql` adds trigger guards for ticket resource/tenant mutation. | Trigger and helper installed; `tickets` delete is revoked; update remains constrained by policy plus protected-column trigger. |
+| SEC-010 | P2 | FIXED ON BRANCH | `supabase/functions/public_maintenance_ticket/index.ts` masks unknown/inactive machine outcomes and stops returning ticket IDs to public callers. | Function deployed to branch; HTTP smoke on nonexistent machine returned `202` with no `ticket_id` or `machine_not_found` in body. |
+| SEC-011 | P2 | FIXED ON BRANCH | Device and notification Edge Functions now return generic error codes and log details server-side. | Modified functions deployed to branch; unauthenticated smoke tests return `401` without backend details. Deno is not installed locally, so no local Deno lint was run. |
+| SEC-012 | P3 / Functional blocker | FIXED ON BRANCH | `20260911102454_admin_functional_rls_and_push_tokens.sql` adds `(user_id, device_id, platform)` uniqueness; app upsert now uses the same conflict target; `20260911110112_align_policy_helpers_and_push_token_roles.sql` scopes push token policies to authenticated. | `dart analyze` and `flutter test` passed; catalog confirms push token insert/update/select policies are authenticated self-only. |
+| SEC-013 | P2 | VERIFIED | No DB change required. | Branch storage audit shows one private `firmware` bucket and no `storage.objects`/`storage.buckets` client-opening policies. |
+| SEC-014 | P3 | FIXED ON BRANCH | Edge Function JWT settings preserved from main while deploying hardened function bodies to the branch. | Branch function list confirms modified functions are deployed under `gydjrznapplpgvmrcymq` with expected `verify_jwt` settings. |
+| SEC-015 | P3 | FIXED FOR THIS REMEDIATION | New branch was created with production data after the initial empty branch was renamed. | Branch `security-rls-remediation` is `with_data=true`, `ACTIVE_HEALTHY`, `FUNCTIONS_DEPLOYED`; migration history includes all remediation migrations. |
+| SEC-016 | P3 | OPEN OPERATIONAL CONFIG | No Auth configuration change made from code. | Branch advisor still reports leaked-password protection disabled; enable this in Supabase Auth settings before production rollout. |

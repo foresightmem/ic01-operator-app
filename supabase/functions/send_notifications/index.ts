@@ -27,6 +27,13 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false },
 });
 
+function jsonError(code: string, status = 500): Response {
+  return new Response(JSON.stringify({ error: code }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 const FCM_ENDPOINT = (projectId: string) =>
   `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`;
 const BATCH_LIMIT = 50;
@@ -233,10 +240,8 @@ serve(async (req) => {
       .limit(BATCH_LIMIT);
 
     if (outboxErr) {
-      return new Response(
-        JSON.stringify({ error: "load_outbox", detail: outboxErr }),
-        { status: 500, headers: { "content-type": "application/json" } },
-      );
+      console.error("load_outbox", outboxErr);
+      return jsonError("load_outbox");
     }
 
     const rows = (outbox ?? []) as OutboxRow[];
@@ -334,9 +339,7 @@ serve(async (req) => {
       headers: { "content-type": "application/json" },
     });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: "unhandled", detail: String(err) }),
-      { status: 500, headers: { "content-type": "application/json" } },
-    );
+    console.error("unhandled", err);
+    return jsonError("unhandled");
   }
 });

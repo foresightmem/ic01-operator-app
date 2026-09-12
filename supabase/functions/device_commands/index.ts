@@ -10,6 +10,13 @@ const supabase = createClient(supabaseUrl, serviceRoleKey, {
 
 const MAX_SKEW_S = 600;
 
+function jsonError(code: string, status = 500): Response {
+  return new Response(JSON.stringify({ error: code }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
 function timingSafeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
@@ -108,10 +115,8 @@ serve(async (req) => {
         .maybeSingle();
 
       if (cmdErr) {
-        return new Response(
-          JSON.stringify({ error: "load_commands", detail: cmdErr }),
-          { status: 500, headers: { "content-type": "application/json" } },
-        );
+        console.error("load_commands", cmdErr);
+        return jsonError("load_commands");
       }
       if (!cmd) {
         return new Response(null, { status: 204 });
@@ -127,10 +132,8 @@ serve(async (req) => {
         .eq("id", cmd.id);
 
       if (sentErr) {
-        return new Response(
-          JSON.stringify({ error: "update_command_status", detail: sentErr }),
-          { status: 500, headers: { "content-type": "application/json" } },
-        );
+        console.error("update_command_status", sentErr);
+        return jsonError("update_command_status");
       }
 
       return new Response(
@@ -156,10 +159,8 @@ serve(async (req) => {
       try {
         payload = JSON.parse(rawBody);
       } catch (err) {
-        return new Response(
-          JSON.stringify({ error: "invalid_json", detail: String(err) }),
-          { status: 400, headers: { "content-type": "application/json" } },
-        );
+        console.error("invalid_json", err);
+        return jsonError("invalid_json", 400);
       }
 
       const commandId = payload.command_id;
@@ -202,10 +203,8 @@ serve(async (req) => {
         .eq("device_id", auth.devicePk);
 
       if (ackErr) {
-        return new Response(
-          JSON.stringify({ error: "ack_failed", detail: ackErr }),
-          { status: 500, headers: { "content-type": "application/json" } },
-        );
+        console.error("ack_failed", ackErr);
+        return jsonError("ack_failed");
       }
 
       return new Response(JSON.stringify({ ok: true }), {
@@ -215,9 +214,7 @@ serve(async (req) => {
 
     return new Response("Method not allowed", { status: 405 });
   } catch (err) {
-    return new Response(
-      JSON.stringify({ error: "unhandled", detail: String(err) }),
-      { status: 500, headers: { "content-type": "application/json" } },
-    );
+    console.error("unhandled", err);
+    return jsonError("unhandled");
   }
 });
