@@ -18,14 +18,156 @@ Do not copy or merge this work into `main` yet unless the blockers below are
 closed or explicitly accepted by the team.
 
 The remediation branch contains the intended security fixes and the app tests
-pass, but the current audit could not complete a fresh live security advisor /
-catalog verification because the available MCP Supabase tools returned
-`Insufficient scope` and the CLI security advisor/migration checks could not
-connect without `SUPABASE_DB_PASSWORD`.
+pass. Fresh Supabase branch checks now confirm that the original P0 issues
+remain closed, but the branch is not yet a clean production/main candidate
+because data parity cleanup, residual risk acceptance, migration promotion
+alignment, and the production promotion decision are still open.
 
-The branch is good enough for controlled branch testing. It is not yet a clean
-production/main candidate until the live advisor run, authenticated role tests,
-and production rollout configuration are verified.
+## 2026-09-13 Gate Update
+
+Production modified during this update: `NO`.
+
+Supabase remediation branch modified: `YES`, only project ref
+`gydjrznapplpgvmrcymq`.
+
+New branch migration applied and mirrored locally:
+`20260913082151_close_pre_main_perf_followups`.
+
+Additional branch migration applied and mirrored locally:
+`20260913092637_notification_runtime_settings`.
+
+### Closed or Improved
+
+- PM-001 partially closed: fresh branch security advisors ran successfully.
+  No fresh findings for disabled RLS, security-definer views, anon GraphQL
+  exposure, anon SECURITY DEFINER execution, or mutable function search paths.
+  Remaining security advisor items are documented under residual risks below.
+- PM-002 partially closed: a branch SQL role matrix was executed through MCP
+  using deterministic test tenants for `anon`, `authenticated` operator, and
+  admin paths. It verified anon denials, cross-tenant read isolation,
+  protected profile/ticket mutation denials, a legitimate ticket status update,
+  same-org admin unavailability insert, cross-org admin denial, and the
+  symmetric operator-B/cannot-read-client-A check. Full app/JWT user acceptance
+  testing remains recommended before production.
+- PM-009 closed on branch: `supabase/tests/security_rls_regression.sql` now
+  matches the current `profiles.organization_id not null` schema and passed
+  end-to-end with `psql -f` against the branch session pooler. Test fixtures
+  were removed after execution.
+- PM-010 closed locally: Deno is installed at `~/.deno/bin/deno`;
+  `deno fmt --check supabase/functions` passes after formatting the Edge
+  Function sources, and `deno check` passes for every function entrypoint.
+- PM-005 closed on branch: `NOTIFICATION_CRON_SECRET` was generated and set as
+  a branch Edge Function secret. `send_notifications` and
+  `schedule_daily_notifications` were deployed to the branch with
+  `verify_jwt=false`, matching their custom shared-secret authorization model.
+  The DB trigger now reads notification runtime settings from
+  `private.app_runtime_settings` via a locked-down SECURITY DEFINER helper.
+  Required runtime values are present; only lengths/booleans were printed.
+- PM-006 closed on branch: Management API patch set
+  `password_hibp_enabled=true`; the subsequent security advisor no longer
+  reports `auth_leaked_password_protection`.
+- PM-012 closed locally: the invalid first line in `.env.local` was moved to
+  `/private/tmp/ic01_env_local_invalid_line1.backup` with mode `600`, and
+  `.env.local` now parses. `supabase migration list --db-url` runs from the
+  repo.
+- PM-004 closed in source: `lib/app/env.dart` no longer contains branch
+  fallback Supabase URL/key values. Production and branch builds must provide
+  `--dart-define=SUPABASE_URL=...` and
+  `--dart-define=SUPABASE_PUBLISHABLE_KEY=...`.
+- PM-013 closed on branch: performance advisor no longer reports
+  `auth_rls_initplan` or `multiple_permissive_policies` for `refills`,
+  `temp_machine_assignments`, or `notification_settings`.
+- PM-014 closed on branch: duplicate index advisor no longer reports duplicate
+  indexes on `device_commands` or `tickets`.
+- PM-016 improved: added a GitHub Actions secret-scan gate plus a local
+  `tooling/secret_scan.sh` check for high-risk JWT, Supabase secret key,
+  service-role assignment, and DB URL patterns.
+- PM-017 closed in repo: `supabase/.temp/*` is ignored and previously tracked
+  temp files were removed from the git index with `git rm --cached`. Local temp
+  files remain on disk only.
+
+### Still Blocking Main
+
+- PM-003 remains open: branch/main row-count parity is currently not exact.
+  Branch has additional rows versus production in `machines` (+1),
+  `machine_consumables` (+1), `refills` (+1), and
+  `public_ticket_request_log` (+3). Do not merge until the team decides whether
+  these are expected branch test rows or drift to reset. Candidate branch-only
+  rows were identified: machine `67fc0a05-82d8-48b2-87bb-452fc9926fd6`,
+  machine consumable `52245c2e-4a6f-4b3f-a198-a0ca31eafedb`, refill
+  `1cd91078-c7ec-4add-85a8-89531b793d5b`, and public ticket request log rows
+  `9f0921db-33f7-46ba-aa08-6d97c571b315`,
+  `e316e1d2-0857-4cf1-8004-586d1f171bdc`, and
+  `1830a886-18b7-4270-8226-5623cb20b73a`. Deletion requires explicit owner
+  approval because these are application data rows.
+- PM-007 remains decision-needed: authenticated GraphQL object visibility
+  remains for 30 objects because the Flutter app still uses authenticated
+  REST/Data API grants with RLS as the authorization boundary. Repo search found
+  no GraphQL client usage. Accept this residual only if GraphQL is intentionally
+  allowed for signed-in users, otherwise disable/limit GraphQL in Supabase API
+  settings instead of revoking REST grants needed by the app.
+- PM-008 remains accepted-risk/decision-needed: public SECURITY DEFINER
+  functions are not executable by `anon`; the remaining authenticated RPC
+  allowlist is app-facing. Catalog review and targeted RLS tests passed for the
+  highest-risk helper and mutation paths. Final owner acceptance is still needed
+  because Supabase will continue to warn on authenticated SECURITY DEFINER RPCs.
+- PM-011 remains open until promotion: branch migration history now includes the
+  new remediation migration, and CLI `migration list --db-url` works from
+  outside the repo. However local migration filenames still differ from several
+  remote migration versions, so production promotion must use Supabase branch
+  merge or a deliberate filename/history alignment plan.
+- PM-015 remains accepted/documented risk: `pg_net` remains in `public`.
+  Branch test showed `alter extension pg_net set schema extensions` fails with
+  `extension "pg_net" does not support SET SCHEMA`. Closing this warning
+  requires Supabase-supported extension reinstall/migration guidance or owner
+  acceptance.
+
+### Fresh Evidence
+
+- Supabase CLI access token verified with read-only `branches list`; branch
+  `security-rls-remediation` is `ACTIVE_HEALTHY` and `FUNCTIONS_DEPLOYED`.
+- Security advisors observed at `2026-09-13T09:28:55.704Z`.
+- Performance advisors observed at `2026-09-13T09:27:04.244Z`.
+- Edge Functions on `gydjrznapplpgvmrcymq` are active with expected JWT flags:
+  `device_telemetry_products` v12 and `device_commands` v9 custom-auth/public
+  JWT off; `public_maintenance_ticket` v4 public JWT off;
+  `send_notifications` v10 and `schedule_daily_notifications` v6 custom-secret
+  JWT off; `places_autocomplete` v7 JWT on.
+- Edge Function secret `NOTIFICATION_CRON_SECRET` is configured on the branch;
+  no value was printed.
+- Storage branch audit: one private `firmware` bucket; no
+  `storage.objects`/`storage.buckets` policies.
+- `private.app_runtime_settings` contains `send_notifications_url` and
+  `notifications_internal_secret`; values were verified by set flags/lengths
+  only. `anon` and `authenticated` have no direct table privileges.
+- RLS regression via MCP: deterministic branch fixture rows were inserted,
+  assertions passed, and fixture rows were removed. Final fixture cleanup check
+  found `0` remaining SEC test organizations.
+- RLS regression via `psql -f supabase/tests/security_rls_regression.sql`:
+  passed against the branch session pooler. Fixture cleanup afterwards found
+  `0` remaining SEC test organizations.
+- Data parity after fixture cleanup: branch differs from production by
+  `machines` (+1), `machine_consumables` (+1), `refills` (+1), and
+  `public_ticket_request_log` (+3).
+- `.env.local` parser check: fixed; original invalid line backed up under
+  `/private/tmp` with mode `600`.
+- `supabase migration list --local`: now reaches local database connection and
+  fails only because local Postgres is not running.
+- `supabase migration list --db-url` from the repo: passed and confirmed remote
+  latest migration `20260913092637`.
+- `psql` branch connectivity: passed after switching to the session pooler URL.
+- `~/.deno/bin/deno --version`: `2.9.6`.
+- `~/.deno/bin/deno fmt --check supabase/functions`: passed.
+- `~/.deno/bin/deno check` on all `supabase/functions/*/index.ts`: passed.
+- `dart analyze lib/app/env.dart lib/main.dart
+  lib/core/services/push_notifications_service.dart`: passed.
+- `flutter test`: passed.
+- `bash tooling/secret_scan.sh`: passed.
+- `git diff --check`: passed.
+
+The 2026-09-13 gate update supersedes older evidence and status rows below
+where they describe earlier access limitations or pre-remediation advisor
+findings.
 
 ## Evidence Collected In This Audit
 

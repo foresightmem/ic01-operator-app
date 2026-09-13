@@ -171,12 +171,18 @@ serve(async (req) => {
 
     if (!normalizedMachineCode) {
       await logRequest(ipHash, machineCodeHash, false);
-      return jsonResponse({ ok: false, message: "Inserisci il codice macchina." }, 400);
+      return jsonResponse({
+        ok: false,
+        message: "Inserisci il codice macchina.",
+      }, 400);
     }
 
     if (!isTicketReason(payload.reason)) {
       await logRequest(ipHash, machineCodeHash, false);
-      return jsonResponse({ ok: false, message: "Seleziona un motivo valido." }, 400);
+      return jsonResponse(
+        { ok: false, message: "Seleziona un motivo valido." },
+        400,
+      );
     }
 
     const { data, error } = await supabase.rpc(

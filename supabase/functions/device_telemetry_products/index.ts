@@ -94,8 +94,7 @@ serve(async (req) => {
     const sigNext = device.device_secret_next
       ? await hmacHex(device.device_secret_next, toSign)
       : "";
-    const valid =
-      timingSafeEqual(signature, sigPrimary) ||
+    const valid = timingSafeEqual(signature, sigPrimary) ||
       (sigNext && timingSafeEqual(signature, sigNext));
 
     if (!valid) {
@@ -127,7 +126,7 @@ serve(async (req) => {
             : null,
         },
         { onConflict: "device_id" },
-    );
+      );
 
     if (statusErr) {
       console.error("write_status", statusErr);

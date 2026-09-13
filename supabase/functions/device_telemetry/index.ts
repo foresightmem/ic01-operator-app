@@ -80,8 +80,7 @@ serve(async (req) => {
   const sigNext = device.device_secret_next
     ? await hmacHex(device.device_secret_next, toSign)
     : "";
-  const valid =
-    timingSafeEqual(signature, sigPrimary) ||
+  const valid = timingSafeEqual(signature, sigPrimary) ||
     (sigNext && timingSafeEqual(signature, sigNext));
 
   if (!valid) {
@@ -96,8 +95,8 @@ serve(async (req) => {
   }
 
   const intervalS = Number(payload.interval_s) || 30;
-  const bucketStartMs =
-    Math.floor(Date.now() / 1000 / intervalS) * intervalS * 1000;
+  const bucketStartMs = Math.floor(Date.now() / 1000 / intervalS) * intervalS *
+    1000;
   const tsBucket = new Date(bucketStartMs).toISOString();
   const counts = payload.counts ?? {};
 

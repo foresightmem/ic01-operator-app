@@ -57,8 +57,7 @@ values
   ('91000000-0000-0000-0000-0000000000b1'),
   ('91000000-0000-0000-0000-0000000000c1'),
   ('92000000-0000-0000-0000-0000000000a1'),
-  ('92000000-0000-0000-0000-0000000000b1'),
-  ('93000000-0000-0000-0000-000000000001')
+  ('92000000-0000-0000-0000-0000000000b1')
 on conflict (id) do nothing;
 
 insert into public.profiles (id, full_name, role, organization_id)
@@ -67,8 +66,7 @@ values
   ('91000000-0000-0000-0000-0000000000b1', 'SEC Operator A', 'refill_operator', '91000000-0000-0000-0000-000000000001'),
   ('91000000-0000-0000-0000-0000000000c1', 'SEC Technician A', 'technician', '91000000-0000-0000-0000-000000000001'),
   ('92000000-0000-0000-0000-0000000000a1', 'SEC Admin B', 'admin', '92000000-0000-0000-0000-000000000001'),
-  ('92000000-0000-0000-0000-0000000000b1', 'SEC Operator B', 'refill_operator', '92000000-0000-0000-0000-000000000001'),
-  ('93000000-0000-0000-0000-000000000001', 'SEC No Membership', 'refill_operator', null)
+  ('92000000-0000-0000-0000-0000000000b1', 'SEC Operator B', 'refill_operator', '92000000-0000-0000-0000-000000000001')
 on conflict (id) do update
 set full_name = excluded.full_name,
     role = excluded.role,
@@ -171,8 +169,8 @@ select pg_temp.expect_error(
   'admin A cannot manage operator B availability'
 );
 
-select pg_temp.set_actor('93000000-0000-0000-0000-000000000001');
+select pg_temp.set_actor('92000000-0000-0000-0000-0000000000b1');
 select pg_temp.expect_zero(
-  'select count(*) from public.clients',
-  'authenticated user without organization sees no tenants'
+  'select count(*) from public.clients where id = ''91100000-0000-0000-0000-000000000001''',
+  'operator B cannot read client A'
 );

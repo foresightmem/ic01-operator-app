@@ -67,3 +67,8 @@ linux/build/
 .env
 .env.*
 
+# Supabase local link/cache metadata
+supabase/.temp/
+
+# Flutter/Dart DevTools local preferences
+devtools_options.yaml

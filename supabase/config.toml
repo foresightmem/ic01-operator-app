@@ -14,3 +14,13 @@ entrypoint = "./functions/public_maintenance_ticket/index.ts"
 enabled = true
 verify_jwt = true
 entrypoint = "./functions/places_autocomplete/index.ts"
+
+[functions.send_notifications]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/send_notifications/index.ts"
+
+[functions.schedule_daily_notifications]
+enabled = true
+verify_jwt = false
+entrypoint = "./functions/schedule_daily_notifications/index.ts"

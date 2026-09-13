@@ -241,22 +241,25 @@ async function autocomplete(payload: AutocompletePayload): Promise<Response> {
   }
 
   logDiagnostic("request started", { action: "autocomplete" });
-  const response = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-goog-api-key": googleApiKey,
-      "x-goog-fieldmask":
-        "suggestions.placePrediction.placeId,suggestions.placePrediction.text",
+  const response = await fetch(
+    "https://places.googleapis.com/v1/places:autocomplete",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": googleApiKey,
+        "x-goog-fieldmask":
+          "suggestions.placePrediction.placeId,suggestions.placePrediction.text",
+      },
+      body: JSON.stringify({
+        input,
+        sessionToken: sessionToken || undefined,
+        languageCode: "it",
+        regionCode: "IT",
+        includedRegionCodes: ["it"],
+      }),
     },
-    body: JSON.stringify({
-      input,
-      sessionToken: sessionToken || undefined,
-      languageCode: "it",
-      regionCode: "IT",
-      includedRegionCodes: ["it"],
-    }),
-  });
+  );
   logDiagnostic("HTTP", { status: response.status, action: "autocomplete" });
 
   if (!response.ok) {
@@ -328,9 +331,7 @@ async function detailsForPlace(
     province: findComponent(components, ["administrative_area_level_2"]),
     region: findComponent(components, ["administrative_area_level_1"]),
     country: findComponent(components, ["country"]),
-    latitude: typeof location?.latitude === "number"
-      ? location.latitude
-      : null,
+    latitude: typeof location?.latitude === "number" ? location.latitude : null,
     longitude: typeof location?.longitude === "number"
       ? location.longitude
       : null,
@@ -354,23 +355,29 @@ async function resolveInput(payload: ResolvePayload): Promise<Response> {
   }
 
   logDiagnostic("request started", { action: "resolve_autocomplete" });
-  const response = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-goog-api-key": googleApiKey,
-      "x-goog-fieldmask":
-        "suggestions.placePrediction.placeId,suggestions.placePrediction.text",
+  const response = await fetch(
+    "https://places.googleapis.com/v1/places:autocomplete",
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-goog-api-key": googleApiKey,
+        "x-goog-fieldmask":
+          "suggestions.placePrediction.placeId,suggestions.placePrediction.text",
+      },
+      body: JSON.stringify({
+        input,
+        sessionToken: sessionToken || undefined,
+        languageCode: "it",
+        regionCode: "IT",
+        includedRegionCodes: ["it"],
+      }),
     },
-    body: JSON.stringify({
-      input,
-      sessionToken: sessionToken || undefined,
-      languageCode: "it",
-      regionCode: "IT",
-      includedRegionCodes: ["it"],
-    }),
+  );
+  logDiagnostic("HTTP", {
+    status: response.status,
+    action: "resolve_autocomplete",
   });
-  logDiagnostic("HTTP", { status: response.status, action: "resolve_autocomplete" });
 
   if (!response.ok) {
     await googleErrorResponse(

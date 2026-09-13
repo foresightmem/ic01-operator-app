@@ -71,8 +71,8 @@ async function signJwt(
 ): Promise<string> {
   const iat = Math.floor(Date.now() / 1000);
   const exp = iat + 3600;
-  const tokenUri =
-    serviceAccount.token_uri ?? "https://oauth2.googleapis.com/token";
+  const tokenUri = serviceAccount.token_uri ??
+    "https://oauth2.googleapis.com/token";
 
   const header = { alg: "RS256", typ: "JWT" };
   const payload = {
@@ -143,8 +143,8 @@ async function getAccessToken(): Promise<
   }
 
   const assertion = await signJwt(serviceAccount);
-  const tokenUri =
-    serviceAccount.token_uri ?? "https://oauth2.googleapis.com/token";
+  const tokenUri = serviceAccount.token_uri ??
+    "https://oauth2.googleapis.com/token";
   const body = new URLSearchParams({
     grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
     assertion,
@@ -211,8 +211,7 @@ async function sendFcm(
 
   const json = await res.json() as { error?: { status?: string } };
   if (json.error?.status) {
-    const unregister =
-      json.error.status === "NOT_FOUND" ||
+    const unregister = json.error.status === "NOT_FOUND" ||
       json.error.status === "UNREGISTERED";
     return { ok: false, error: json.error.status, unregister };
   }

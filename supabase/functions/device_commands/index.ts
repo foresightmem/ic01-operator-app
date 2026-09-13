@@ -80,8 +80,7 @@ async function authenticate(req: Request, rawBody: string): Promise<
   const sigNext = device.device_secret_next
     ? await hmacHex(device.device_secret_next, toSign)
     : "";
-  const valid =
-    timingSafeEqual(signature, sigPrimary) ||
+  const valid = timingSafeEqual(signature, sigPrimary) ||
     (sigNext && timingSafeEqual(signature, sigNext));
 
   if (!valid) {
@@ -155,7 +154,8 @@ serve(async (req) => {
         return auth;
       }
 
-      let payload: { command_id?: string; status?: string; message?: string } = {};
+      let payload: { command_id?: string; status?: string; message?: string } =
+        {};
       try {
         payload = JSON.parse(rawBody);
       } catch (err) {
