@@ -1,8 +1,8 @@
 # Supabase Production Promotion Runbook
 
-Status: PM-011 closure decision.
+Status: executed on 2026-09-14.
 
-Production modified: `NO`.
+Production modified: `YES`.
 
 Decision:
 
@@ -63,3 +63,16 @@ Rollback guidance:
 - Prefer Supabase branch/backup restore guidance over ad hoc reverse SQL.
 - If branch merge partially fails, stop and collect Supabase error output
   before making any manual production change.
+
+Execution notes:
+
+- Supabase branch merge from `gydjrznapplpgvmrcymq` to
+  `atpfgkhechvdijqnflnc` completed successfully.
+- Production migration history includes remediation migrations through
+  `20260914132346 fix_ticket_protected_columns_trigger_definer`.
+- Git `main` was fast-forwarded and pushed to `origin/main` at commit
+  `e691db1`.
+- Remaining manual/approved action: set production
+  `private.app_runtime_settings.notifications_internal_secret` to match the
+  production `NOTIFICATION_CRON_SECRET` Edge Function secret without exposing
+  the secret value.

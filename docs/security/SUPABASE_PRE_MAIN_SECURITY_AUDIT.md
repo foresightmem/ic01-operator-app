@@ -10,18 +10,53 @@ Supabase branch project ref expected: `gydjrznapplpgvmrcymq`
 
 Production project ref: `atpfgkhechvdijqnflnc`
 
-Production modified during this audit: `NO`
+Production modified during this audit: `YES - Supabase branch merge completed on 2026-09-14`
 
 ## Executive Decision
 
-Do not copy or merge this work into `main` yet unless the blockers below are
-closed or explicitly accepted by the team.
+This work has been merged into Git `main` and promoted to Supabase production
+after owner approval on 2026-09-14.
 
 The remediation branch contains the intended security fixes and the app tests
 pass. Fresh Supabase branch checks now confirm that the original P0 issues
-remain closed, but the branch is not yet a clean production/main candidate
-because the remaining authenticated real-user/UAT matrix and production
-rollout approvals must still be completed or explicitly accepted.
+remain closed. Production is structurally promoted, but release readiness still
+depends on final real-user/UAT smoke checks and the notification runtime secret
+configuration noted below.
+
+## 2026-09-14 Production Promotion Update
+
+Production modified during this update: `YES`.
+
+### Completed
+
+- Supabase branch `security-rls-remediation`
+  (`gydjrznapplpgvmrcymq`) was merged into production
+  (`atpfgkhechvdijqnflnc`) using the official Supabase branch merge path.
+- Production branch status returned to `FUNCTIONS_DEPLOYED`.
+- Production migration history now includes all remediation migrations through
+  `20260914132346 fix_ticket_protected_columns_trigger_definer`.
+- Production Edge Functions are active after merge:
+  `device_telemetry_products`, `device_commands`, `send_notifications`,
+  `schedule_daily_notifications`, `public_maintenance_ticket`, and
+  `places_autocomplete`.
+- Production catalog post-checks:
+  - public base tables without RLS: `0`;
+  - anon-executable public `SECURITY DEFINER` functions: `0`;
+  - duplicate index pair checks for `device_commands` and `tickets`: `0`.
+- Production storage still has one private `firmware` bucket and no storage
+  policies.
+- Production `private.app_runtime_settings.send_notifications_url` was set to
+  the production Edge Function URL.
+- Git `main` was fast-forwarded to `e691db1` and pushed to `origin/main`.
+
+### Remaining Production Release Item
+
+- `private.app_runtime_settings.notifications_internal_secret` is not set in
+  production. This prevents `notify_outbox_immediate()` from invoking
+  `send_notifications` for immediate notification dispatch. Updating this
+  requires explicit owner approval because it must match the production
+  `NOTIFICATION_CRON_SECRET` Edge Function secret, and secret values must not be
+  printed in logs or committed.
 
 ## 2026-09-14 Pre-Merge Test Run
 
@@ -326,7 +361,7 @@ Supabase remediation branch modified: `YES`, only project ref
 | PM-002 | P0 | Partially Closed / UAT In Progress | SQL role-matrix regression covers anon, authenticated operator, admin, cross-tenant denial, protected mutations, legacy refill denial, allowed assigned-operator refill, admin deletion of same-org `suggested` coverage assignments, admin machine tank save with fill-percent trigger update, and admin maintenance-ticket reopen. Manual admin UAT found and fixed blockers in coverage, machine tank configuration, and ticket reopen. Continue real app/JWT UAT with internal admin, technician, refill operator, assigned operator, and no-membership user before production. | RLS can fail silently by returning empty results or can allow too much. Production risk is either broken app screens for legitimate users or cross-tenant access that was not visible in SQL/catalog tests. |
 | PM-003 | P1 | Closed On Branch | Owner confirmed the branch-only rows were test data. They were removed from the remediation branch only, and exact `count(*)` parity now matches production for all 26 `public` base tables. Reconfirm parity immediately before the actual production merge window. | If parity drifts again before merge, tests may no longer represent production. Treat the current closure as valid for this branch state, not as a permanent waiver. |
 | PM-004 | P1 | Closed In Source / Release Values Required | `lib/app/env.dart` reads `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`; `flutter build web` smoke passed with non-sensitive dart defines. Production release must still supply production values in CI/manual build. | If production values are omitted or wrong during release, the app can fail at startup or point to the wrong Supabase project. |
-| PM-005 | P1 | Closed On Branch / Prod Rollout Required | Branch `private.app_runtime_settings` contains `send_notifications_url` and `notifications_internal_secret`; values were verified by presence/length only. Production values must be set as part of the approved Supabase branch merge rollout. | If production runtime values are omitted or wrong, immediate notifications can stop or call the wrong endpoint. |
+| PM-005 | P1 | Partially Closed In Production | Production `send_notifications_url` points to the production Edge Function URL. Production `notifications_internal_secret` still needs to be set to the approved production notification secret without printing the value. | Until the secret row is set, immediate notification dispatch from `notify_outbox_immediate()` will not call `send_notifications`; scheduled/cron behavior depends on the Edge Function secret configuration. |
 | PM-006 | P1 | Closed On Branch / Prod Rollout Required | Leaked-password protection was enabled on the remediation branch and the fresh security advisor no longer reports `auth_leaked_password_protection`. Confirm the setting after production promotion. | Production must be verified after merge because Auth settings are operational configuration, not only SQL migration state. |
 | PM-007 | P1 | Closed / Accepted Residual | Team accepted authenticated GraphQL object visibility because Flutter has no GraphQL client and uses authenticated REST/Data API grants with RLS as the authorization boundary. Future removal requires disabling/limiting GraphQL in Supabase API settings or changing the app grant model. | Residual schema/object visibility remains for signed-in users. If future RLS changes are wrong, GraphQL can still be an alternate access path, so advisor output must stay reviewed before production promotion. |
 | PM-008 | P1 | Closed On Branch | `20260914082527_close_pm008_security_definer_allowlist.sql` makes legacy `perform_refill(uuid)` service-role only. The regression SQL now enforces an exact authenticated SECURITY DEFINER allowlist and tests legacy refill denial, cross-tenant refill denial, and the live assigned-operator refill path. | Supabase may still warn because some app RPCs intentionally remain authenticated SECURITY DEFINER. The remaining risk is controlled by allowlist, body-level auth checks, and regression tests. |
