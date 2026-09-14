@@ -33,8 +33,8 @@ or deleted by the remediation work.
 | --- | --- | --- | --- | --- |
 | SEC-001 | P0 | Fixed on branch | `20260911102427_emergency_enable_rls_on_public_exposed_tables.sql` | Advisors no longer report disabled RLS; catalog confirms RLS enabled/forced and anon denied |
 | SEC-002 | P1 | Fixed on branch | `20260911102433_secure_views_and_api_grants.sql` | Advisors no longer report security-definer views; audited views have `security_invoker=true` |
-| SEC-003 | P1 | Fixed for anon, accepted residual for authenticated | `20260911102433_secure_views_and_api_grants.sql` | Anon GraphQL exposure warning cleared; authenticated object visibility remains for app REST/Data API compatibility |
-| SEC-004 | P1 | Fixed for anon, reviewed for authenticated | `20260911102447_secure_security_definer_execute_surface.sql` | Anon SECURITY DEFINER warning cleared; intended authenticated RPC allowlist remains |
+| SEC-003 | P1 | Fixed for anon, accepted residual for authenticated | `20260911102433_secure_views_and_api_grants.sql` | Anon GraphQL exposure warning cleared; authenticated object visibility remains for app REST/Data API compatibility and was accepted by team decision on 2026-09-14 |
+| SEC-004 | P1 | Closed with audited authenticated allowlist | `20260911102447_secure_security_definer_execute_surface.sql`, `20260914082527_close_pm008_security_definer_allowlist.sql` | Anon SECURITY DEFINER warning cleared; legacy `perform_refill(uuid)` is service-role only; regression SQL enforces the authenticated allowlist and refill auth tests |
 | SEC-005 | P1 | Fixed on branch | `20260911102447_secure_security_definer_execute_surface.sql`, `20260911110112_align_policy_helpers_and_push_token_roles.sql` | Caller-supplied helper RPCs are no longer executable by anon/authenticated |
 | SEC-006 | P2 | Fixed in source | `lib/app/env.dart`, `lib/main.dart` | `dart analyze` and `flutter test` passed; secret pattern scan found no legacy key in app/function source |
 | SEC-007 | P1 | Fixed on branch | `20260911102440_lock_profile_and_ticket_mutations.sql` | `profiles` has no anon grants and no authenticated insert/update/delete grant |
@@ -46,7 +46,7 @@ or deleted by the remediation work.
 | SEC-013 | P2 | Verified | No schema change required | Storage has one private `firmware` bucket and no client-opening object policies |
 | SEC-014 | P3 | Fixed on branch | Edge Function deployment metadata | Hardened functions deployed to remediation project ref with expected `verify_jwt` settings |
 | SEC-015 | P3 | Fixed for this remediation | Branch recreation with data | Current branch is production-equivalent by schema/data baseline and has remediation migration history |
-| SEC-016 | P3 | Open operational config | Supabase Auth settings | Advisor still reports leaked-password protection disabled |
+| SEC-016 | P3 | Fixed on branch | Supabase Auth settings | Management API set leaked-password protection enabled; subsequent advisor no longer reports `auth_leaked_password_protection` |
 
 ## Applied Branch Migrations
 
@@ -59,13 +59,16 @@ or deleted by the remediation work.
 - `tighten_machine_table_grants`
 - `align_policy_helpers_and_push_token_roles`
 - `drop_duplicate_machine_consumables_index`
+- `close_pre_main_perf_followups`
+- `notification_runtime_settings`
+- `close_pm008_security_definer_allowlist`
 
 ## Edge Functions Deployed To Branch
 
 - `device_telemetry_products`: `verify_jwt=false`, custom HMAC auth retained.
 - `device_commands`: `verify_jwt=false`, custom HMAC auth retained.
-- `send_notifications`: `verify_jwt=true`.
-- `schedule_daily_notifications`: `verify_jwt=true`.
+- `send_notifications`: `verify_jwt=false`, custom cron/internal secret auth retained.
+- `schedule_daily_notifications`: `verify_jwt=false`, custom cron/internal secret auth retained.
 - `public_maintenance_ticket`: `verify_jwt=false`, public route retained with
   enumeration-safe response body.
 
@@ -103,18 +106,19 @@ or deleted by the remediation work.
 
 ## Remaining Risks
 
-Authenticated GraphQL object visibility remains as an advisor warning because
-the Flutter app currently uses authenticated REST/Data API grants on the same
-tables and views. RLS is now the authorization boundary. To remove that warning,
-disable GraphQL for this API surface or move app reads to RPCs/views with a
-different grant model.
+Authenticated GraphQL object visibility remains as an accepted advisor warning
+because the Flutter app currently uses authenticated REST/Data API grants on
+the same tables and views. RLS is now the authorization boundary. To remove
+that warning, disable GraphQL for this API surface or move app reads to
+RPCs/views with a different grant model.
 
 The `pg_net` extension remains in `public`; catalog inspection shows it is not
 relocatable in this project. Do not force-move it without a dedicated migration
 and rollback test.
 
-Supabase Auth leaked-password protection is still disabled. Enable it in Auth
-settings before production rollout.
+Supabase Auth leaked-password protection is enabled on the remediation branch.
+Repeat the same Auth setting in production during the approved production
+rollout.
 
 The saved SQL regression file is present at
 `supabase/tests/security_rls_regression.sql`, but direct `psql` execution from

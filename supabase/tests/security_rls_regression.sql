@@ -45,6 +45,87 @@ begin
 end;
 $$;
 
+create or replace function pg_temp.cleanup_security_rls_regression()
+returns void
+language plpgsql
+as $$
+begin
+  delete from public.ticket_events
+  where ticket_id in (
+    '91400000-0000-0000-0000-000000000001',
+    '92400000-0000-0000-0000-000000000001'
+  );
+
+  delete from public.refills
+  where machine_id in (
+    '91300000-0000-0000-0000-000000000001',
+    '92300000-0000-0000-0000-000000000001'
+  );
+
+  delete from public.operator_unavailability
+  where operator_id in (
+    '91000000-0000-0000-0000-0000000000b1',
+    '92000000-0000-0000-0000-0000000000b1'
+  );
+
+  delete from public.tickets
+  where id in (
+    '91400000-0000-0000-0000-000000000001',
+    '92400000-0000-0000-0000-000000000001'
+  );
+
+  delete from public.machine_consumables
+  where machine_id in (
+    '91300000-0000-0000-0000-000000000001',
+    '92300000-0000-0000-0000-000000000001'
+  );
+
+  delete from public.machines
+  where id in (
+    '91300000-0000-0000-0000-000000000001',
+    '92300000-0000-0000-0000-000000000001'
+  );
+
+  delete from public.sites
+  where id in (
+    '91200000-0000-0000-0000-000000000001',
+    '92200000-0000-0000-0000-000000000001'
+  );
+
+  delete from public.clients
+  where id in (
+    '91100000-0000-0000-0000-000000000001',
+    '92100000-0000-0000-0000-000000000001'
+  );
+
+  delete from public.profiles
+  where id in (
+    '91000000-0000-0000-0000-0000000000a1',
+    '91000000-0000-0000-0000-0000000000b1',
+    '91000000-0000-0000-0000-0000000000c1',
+    '92000000-0000-0000-0000-0000000000a1',
+    '92000000-0000-0000-0000-0000000000b1'
+  );
+
+  delete from auth.users
+  where id in (
+    '91000000-0000-0000-0000-0000000000a1',
+    '91000000-0000-0000-0000-0000000000b1',
+    '91000000-0000-0000-0000-0000000000c1',
+    '92000000-0000-0000-0000-0000000000a1',
+    '92000000-0000-0000-0000-0000000000b1'
+  );
+
+  delete from public.organizations
+  where id in (
+    '91000000-0000-0000-0000-000000000001',
+    '92000000-0000-0000-0000-000000000001'
+  );
+end;
+$$;
+
+select pg_temp.cleanup_security_rls_regression();
+
 insert into public.organizations (id, name)
 values
   ('91000000-0000-0000-0000-000000000001', 'SEC Test Org A'),
@@ -99,6 +180,23 @@ set code = excluded.code,
     assigned_operator_id = excluded.assigned_operator_id,
     organization_id = excluded.organization_id;
 
+insert into public.machine_consumables (
+  machine_id,
+  type,
+  capacity_units,
+  current_units,
+  is_enabled,
+  updated_at
+)
+values
+  ('91300000-0000-0000-0000-000000000001', 'hot'::public.consumable_type, 100, 25, true, now()),
+  ('92300000-0000-0000-0000-000000000001', 'hot'::public.consumable_type, 100, 25, true, now())
+on conflict (machine_id, type) do update
+set capacity_units = excluded.capacity_units,
+    current_units = excluded.current_units,
+    is_enabled = excluded.is_enabled,
+    updated_at = excluded.updated_at;
+
 insert into public.tickets (id, machine_id, client_id, site_id, status, reason, source, assigned_operator_id)
 values
   ('91400000-0000-0000-0000-000000000001', '91300000-0000-0000-0000-000000000001', '91100000-0000-0000-0000-000000000001', '91200000-0000-0000-0000-000000000001', 'open', 'malfunction', 'operator_app', '91000000-0000-0000-0000-0000000000b1'),
@@ -113,6 +211,68 @@ set machine_id = excluded.machine_id,
     assigned_operator_id = excluded.assigned_operator_id;
 
 commit;
+
+do $$
+declare
+  v_allowed text[] := array[
+    'add_site_to_client(uuid,text,text)',
+    'add_site_to_client(uuid,text,text,text)',
+    'add_site_to_client(uuid,text,text,text,double precision,double precision)',
+    'client_has_no_machines(uuid)',
+    'control_center_is_internal_admin()',
+    'control_center_supported_commands()',
+    'create_client_with_primary_site(text,text,text)',
+    'create_client_with_primary_site(text,text,text,text)',
+    'create_client_with_primary_site(text,text,text,text,double precision,double precision)',
+    'create_control_center_device_command(uuid,text,jsonb)',
+    'create_machine_for_site(uuid,uuid,text,text,integer,uuid,text)',
+    'current_app_organization_id()',
+    'current_app_role()',
+    'current_user_has_client_access(uuid)',
+    'current_user_has_machine_access(uuid)',
+    'current_user_has_site_access(uuid)',
+    'delete_onboarding_client(uuid)',
+    'get_control_center_device_detail(uuid)',
+    'get_control_center_devices()',
+    'get_control_center_events(integer,uuid,text,text,timestamp with time zone,timestamp with time zone)',
+    'get_control_center_overview()',
+    'get_refill_productivity_kpi(integer,text,numeric)',
+    'onboarding_actor_context()',
+    'perform_refill_consumable(uuid,consumable_type)',
+    'site_has_no_machines(uuid)'
+  ];
+  v_unexpected text[];
+  v_missing text[];
+begin
+  select coalesce(array_agg(p.oid::regprocedure::text order by p.oid::regprocedure::text), '{}')
+  into v_unexpected
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.prosecdef
+    and has_function_privilege('authenticated', p.oid, 'execute')
+    and not (p.oid::regprocedure::text = any(v_allowed));
+
+  if cardinality(v_unexpected) > 0 then
+    raise exception 'Unexpected authenticated SECURITY DEFINER functions: %',
+      array_to_string(v_unexpected, ', ');
+  end if;
+
+  select coalesce(array_agg(expected order by expected), '{}')
+  into v_missing
+  from unnest(v_allowed) as expected
+  where to_regprocedure('public.' || expected) is null
+     or not has_function_privilege(
+       'authenticated',
+       to_regprocedure('public.' || expected),
+       'execute'
+     );
+
+  if cardinality(v_missing) > 0 then
+    raise exception 'Missing authenticated SECURITY DEFINER allowlist functions: %',
+      array_to_string(v_missing, ', ');
+  end if;
+end $$;
 
 set role anon;
 select pg_temp.expect_error('select count(*) from public.visits', 'anon cannot read visits');
@@ -152,6 +312,19 @@ select pg_temp.expect_error(
   'update public.tickets set machine_id = ''92300000-0000-0000-0000-000000000001'', client_id = ''92100000-0000-0000-0000-000000000001'', site_id = ''92200000-0000-0000-0000-000000000001'' where id = ''91400000-0000-0000-0000-000000000001''',
   'operator A cannot reassign ticket to tenant B'
 );
+select pg_temp.expect_error(
+  'select public.perform_refill(''91300000-0000-0000-0000-000000000001'')',
+  'authenticated operator cannot execute legacy perform_refill'
+);
+select pg_temp.expect_error(
+  'select public.perform_refill_consumable(''92300000-0000-0000-0000-000000000001'', ''hot''::public.consumable_type)',
+  'operator A cannot refill machine B'
+);
+
+select public.perform_refill_consumable(
+  '91300000-0000-0000-0000-000000000001',
+  'hot'::public.consumable_type
+);
 
 update public.tickets
 set status = 'in_progress'
@@ -174,3 +347,6 @@ select pg_temp.expect_zero(
   'select count(*) from public.clients where id = ''91100000-0000-0000-0000-000000000001''',
   'operator B cannot read client A'
 );
+
+reset role;
+select pg_temp.cleanup_security_rls_regression();

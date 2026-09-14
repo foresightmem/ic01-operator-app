@@ -1,10 +1,10 @@
 class AppEnv {
   static const supabaseUrl = String.fromEnvironment(
-    'https://gydjrznapplpgvmrcymq.supabase.co',
+    'SUPABASE_URL',
     defaultValue: '',
   );
   static const supabasePublishableKey = String.fromEnvironment(
-    'sb_publishable_l-JR7w04Ci147BmcEJO25w_uxWUJ9pt',
+    'SUPABASE_PUBLISHABLE_KEY',
     defaultValue: '',
   );
 
