@@ -46,6 +46,19 @@ RLS regression fixtures created and removed by the test script.
   presence and lengths were verified, not values.
 - `supabase/tests/security_rls_regression.sql` passed through `psql` against
   the branch and now performs cleanup at the beginning and end of the script.
+- PM-002 UAT found and fixed an admin coverage blocker: the app needed to
+  delete previous `suggested` rows in `temp_machine_assignments`, but
+  authenticated lacked table DELETE privilege. Branch migration
+  `20260914100050_fix_admin_coverage_suggested_assignment_delete` grants
+  DELETE to `authenticated` while RLS restricts it to same-org admins and
+  `status = 'suggested'`.
+- PM-002 UAT found and fixed an admin machine tank configuration blocker:
+  `machine_consumables` writes fired `sync_machine_current_fill_percent()`,
+  which attempted to update derived `machines.current_fill_percent` after
+  direct machine update grants had been narrowed. Branch migration
+  `20260914100936_fix_machine_consumables_fill_percent_trigger` makes only the
+  trigger helper `SECURITY DEFINER`, fixes its `search_path`, and revokes direct
+  execute from app roles.
 - Post-regression cleanup check: `0` SEC test org/profile/client/site/machine
   fixture rows remained.
 - Data parity: branch and production match exact `count(*)` values for all 26
@@ -304,7 +317,7 @@ Supabase remediation branch modified: `YES`, only project ref
 | ID | Severity | Status | What must be fixed before main | What could go wrong in production if not fixed |
 | --- | --- | --- | --- | --- |
 | PM-001 | P0 | Closed On Branch | Fresh security advisors and catalog checks ran on `gydjrznapplpgvmrcymq`. No unaccepted ERROR/WARN findings remain for RLS disabled, security-definer views, anon GraphQL exposure, anon SECURITY DEFINER execution, mutable search paths, storage exposure, or public grants. | Keep this gate fresh: rerun immediately before production merge if the branch changes again. |
-| PM-002 | P0 | Partially Closed / UAT Recommended | SQL role-matrix regression covers anon, authenticated operator, admin, cross-tenant denial, protected mutations, legacy refill denial, and allowed assigned-operator refill. Real app/JWT UAT with admin, internal admin, technician, refill operator, assigned operator, and no-membership user is still recommended before production. | RLS can fail silently by returning empty results or can allow too much. Production risk is either broken app screens for legitimate users or cross-tenant access that was not visible in SQL/catalog tests. |
+| PM-002 | P0 | Partially Closed / UAT In Progress | SQL role-matrix regression covers anon, authenticated operator, admin, cross-tenant denial, protected mutations, legacy refill denial, allowed assigned-operator refill, admin deletion of same-org `suggested` coverage assignments, and admin machine tank save with fill-percent trigger update. Manual admin UAT found and fixed blockers in coverage and machine tank configuration. Continue real app/JWT UAT with internal admin, technician, refill operator, assigned operator, and no-membership user before production. | RLS can fail silently by returning empty results or can allow too much. Production risk is either broken app screens for legitimate users or cross-tenant access that was not visible in SQL/catalog tests. |
 | PM-003 | P1 | Closed On Branch | Owner confirmed the branch-only rows were test data. They were removed from the remediation branch only, and exact `count(*)` parity now matches production for all 26 `public` base tables. Reconfirm parity immediately before the actual production merge window. | If parity drifts again before merge, tests may no longer represent production. Treat the current closure as valid for this branch state, not as a permanent waiver. |
 | PM-004 | P1 | Closed In Source / Release Values Required | `lib/app/env.dart` reads `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY`; `flutter build web` smoke passed with non-sensitive dart defines. Production release must still supply production values in CI/manual build. | If production values are omitted or wrong during release, the app can fail at startup or point to the wrong Supabase project. |
 | PM-005 | P1 | Closed On Branch / Prod Rollout Required | Branch `private.app_runtime_settings` contains `send_notifications_url` and `notifications_internal_secret`; values were verified by presence/length only. Production values must be set as part of the approved Supabase branch merge rollout. | If production runtime values are omitted or wrong, immediate notifications can stop or call the wrong endpoint. |

@@ -62,6 +62,8 @@ or deleted by the remediation work.
 - `close_pre_main_perf_followups`
 - `notification_runtime_settings`
 - `close_pm008_security_definer_allowlist`
+- `fix_admin_coverage_suggested_assignment_delete`
+- `fix_machine_consumables_fill_percent_trigger`
 
 ## Edge Functions Deployed To Branch
 

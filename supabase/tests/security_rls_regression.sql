@@ -68,6 +68,20 @@ begin
     '92000000-0000-0000-0000-0000000000b1'
   );
 
+  delete from public.temp_machine_assignments
+  where machine_id in (
+    '91300000-0000-0000-0000-000000000001',
+    '92300000-0000-0000-0000-000000000001'
+  )
+  or original_operator_id in (
+    '91000000-0000-0000-0000-0000000000b1',
+    '92000000-0000-0000-0000-0000000000b1'
+  )
+  or new_operator_id in (
+    '91000000-0000-0000-0000-0000000000c1',
+    '92000000-0000-0000-0000-0000000000b1'
+  );
+
   delete from public.tickets
   where id in (
     '91400000-0000-0000-0000-000000000001',
@@ -336,6 +350,50 @@ select pg_temp.set_actor('91000000-0000-0000-0000-0000000000a1');
 insert into public.operator_unavailability (operator_id, start_date, end_date, reason)
 values ('91000000-0000-0000-0000-0000000000b1', current_date + 1, current_date + 2, 'SEC test')
 returning id;
+
+insert into public.temp_machine_assignments (
+  id,
+  machine_id,
+  original_operator_id,
+  new_operator_id,
+  start_date,
+  end_date,
+  status
+)
+values (
+  '91500000-0000-0000-0000-000000000001',
+  '91300000-0000-0000-0000-000000000001',
+  '91000000-0000-0000-0000-0000000000b1',
+  '91000000-0000-0000-0000-0000000000c1',
+  current_date + 1,
+  current_date + 2,
+  'suggested'
+);
+
+delete from public.temp_machine_assignments
+where id = '91500000-0000-0000-0000-000000000001';
+
+select pg_temp.expect_zero(
+  'select count(*) from public.temp_machine_assignments where id = ''91500000-0000-0000-0000-000000000001''',
+  'admin A can delete suggested coverage assignment in own org'
+);
+
+update public.machines
+set temperature_mode = 'hot'
+where id = '91300000-0000-0000-0000-000000000001';
+
+update public.machine_consumables
+set capacity_units = 100,
+    current_units = 50,
+    is_enabled = true,
+    updated_at = now()
+where machine_id = '91300000-0000-0000-0000-000000000001'
+  and type = 'hot'::public.consumable_type;
+
+select pg_temp.expect_zero(
+  'select count(*) from public.machines where id = ''91300000-0000-0000-0000-000000000001'' and current_fill_percent <> 50',
+  'admin A can save tank config and trigger updates current_fill_percent'
+);
 
 select pg_temp.expect_error(
   'insert into public.operator_unavailability (operator_id, start_date, end_date, reason) values (''92000000-0000-0000-0000-0000000000b1'', current_date + 1, current_date + 2, ''cross org'')',
