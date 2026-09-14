@@ -351,6 +351,15 @@ insert into public.operator_unavailability (operator_id, start_date, end_date, r
 values ('91000000-0000-0000-0000-0000000000b1', current_date + 1, current_date + 2, 'SEC test')
 returning id;
 
+update public.tickets
+set status = 'open'
+where id = '91400000-0000-0000-0000-000000000001';
+
+select pg_temp.expect_zero(
+  'select count(*) from public.tickets where id = ''91400000-0000-0000-0000-000000000001'' and status <> ''open''',
+  'admin A can reopen maintenance ticket'
+);
+
 insert into public.temp_machine_assignments (
   id,
   machine_id,

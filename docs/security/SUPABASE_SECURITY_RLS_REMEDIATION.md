@@ -64,6 +64,7 @@ or deleted by the remediation work.
 - `close_pm008_security_definer_allowlist`
 - `fix_admin_coverage_suggested_assignment_delete`
 - `fix_machine_consumables_fill_percent_trigger`
+- `fix_ticket_protected_columns_trigger_definer`
 
 ## Edge Functions Deployed To Branch
 
