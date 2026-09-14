@@ -37,6 +37,74 @@ String normalizeMachineCodeInput(String value) {
   return normalizedRequiredText(value).toUpperCase();
 }
 
+String? cityFromAddressText(String value) {
+  final text = normalizedRequiredText(value);
+  if (text.isEmpty) return null;
+
+  const knownCities = <String, String>{
+    'roma': 'Roma',
+    'milano': 'Milano',
+    'napoli': 'Napoli',
+    'torino': 'Torino',
+    'palermo': 'Palermo',
+    'genova': 'Genova',
+    'bologna': 'Bologna',
+    'firenze': 'Firenze',
+    'bari': 'Bari',
+    'catania': 'Catania',
+    'venezia': 'Venezia',
+    'verona': 'Verona',
+    'padova': 'Padova',
+  };
+
+  final normalized = text.toLowerCase();
+  for (final entry in knownCities.entries) {
+    if (RegExp('\\b${RegExp.escape(entry.key)}\\b').hasMatch(normalized)) {
+      return entry.value;
+    }
+  }
+
+  final parts = text
+      .split(',')
+      .map(
+        (part) => part
+            .replaceAll(RegExp(r'\b\d{5}\b'), '')
+            .replaceAll(RegExp(r'\b[A-Z]{2}\b'), '')
+            .replaceAll(RegExp(r'\b(italia|italy)\b', caseSensitive: false), '')
+            .trim(),
+      )
+      .where((part) => part.isNotEmpty)
+      .toList()
+      .reversed;
+
+  for (final part in parts) {
+    final words = part.split(RegExp(r'\s+'));
+    final first = words.first.toLowerCase();
+    if (!{
+      'via',
+      'viale',
+      'piazza',
+      'corso',
+      'largo',
+      'strada',
+      'vicolo',
+      'contrada',
+      'località',
+      'localita',
+    }.contains(first)) {
+      return words
+          .map(
+            (word) => word.isEmpty
+                ? word
+                : '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}',
+          )
+          .join(' ');
+    }
+  }
+
+  return null;
+}
+
 bool isValidMachineCodeInput(String value) {
   return normalizeMachineCodeInput(value).isNotEmpty;
 }
@@ -221,9 +289,10 @@ class ResolvedAddress {
 
   factory ResolvedAddress.fromMap(Map<String, dynamic> map) {
     final city = (map['city'] as String?)?.trim();
+    final address = (map['address'] as String?) ?? '';
     return ResolvedAddress(
-      address: (map['address'] as String?) ?? '',
-      city: city == null || city.isEmpty ? null : city,
+      address: address,
+      city: city == null || city.isEmpty ? cityFromAddressText(address) : city,
       latitude: (map['latitude'] as num?)?.toDouble(),
       longitude: (map['longitude'] as num?)?.toDouble(),
     );

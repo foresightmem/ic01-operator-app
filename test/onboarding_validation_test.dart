@@ -51,6 +51,21 @@ void main() {
       expect(resolved.longitude, 12.5146);
     });
 
+    test('derives city from formatted address when Google omits city', () {
+      final resolved = ResolvedAddress.fromMap({
+        'address': 'Via Appia Nuova, 122, 00183 Roma RM, Italia',
+        'city': null,
+        'latitude': 41.8792,
+        'longitude': 12.5146,
+      });
+
+      expect(resolved.city, 'Roma');
+      expect(
+        cityFromAddressText('Via Appia Nuova, 122, 00183 Roma RM, Italia'),
+        'Roma',
+      );
+    });
+
     test('maps technical onboarding errors to user-safe messages', () {
       final missingRpc = PostgrestException(
         message:

@@ -75,6 +75,15 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
       for (final s in sites) s['id'] as String: s,
     };
 
+    final Map<String, String> primaryCityByClientId = {};
+    for (final site in sites) {
+      final clientId = site['client_id'] as String;
+      final city = _siteCityLabel(site);
+      if (city != 'Senza città') {
+        primaryCityByClientId.putIfAbsent(clientId, () => city);
+      }
+    }
+
     // aggregati per client
     final Map<String, _ClientAggregate> aggByClientId = {};
 
@@ -89,9 +98,7 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
       final client = clientById[clientId];
       if (client == null) continue;
 
-      final String city = (site['city'] as String?)?.trim().isNotEmpty == true
-          ? (site['city'] as String)
-          : 'Senza città';
+      final String city = _siteCityLabel(site);
 
       final int shots = (m['yearly_shots'] as int?) ?? 0;
 
@@ -107,6 +114,9 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
       );
 
       final agg = aggByClientId[clientId]!;
+      if (agg.city == 'Senza città' && city != 'Senza città') {
+        agg.city = city;
+      }
       agg.machineCount += 1;
       agg.totalShots += shots;
     }
@@ -118,7 +128,7 @@ class _AdminClientsOverviewPageState extends State<AdminClientsOverviewPage> {
         aggByClientId[clientId] = _ClientAggregate(
           clientId: clientId,
           clientName: c['name'] as String? ?? 'Senza nome',
-          city: 'Senza città',
+          city: primaryCityByClientId[clientId] ?? 'Senza città',
           machineCount: 0,
           totalShots: 0,
         );
@@ -508,7 +518,7 @@ class _CityGroup {
 class _ClientAggregate {
   final String clientId;
   final String clientName;
-  final String city;
+  String city;
   int machineCount;
   int totalShots;
 
@@ -522,3 +532,8 @@ class _ClientAggregate {
 }
 
 enum _ClientSortMode { shotsDesc, machinesDesc, nameAsc }
+
+String _siteCityLabel(Map<String, dynamic> site) {
+  final city = (site['city'] as String?)?.trim();
+  return city == null || city.isEmpty ? 'Senza città' : city;
+}

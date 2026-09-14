@@ -35,7 +35,12 @@ import 'core/services/push_notifications_service.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  AppEnv.validate();
+  try {
+    AppEnv.validate();
+  } on StateError catch (error) {
+    runApp(_ConfigurationErrorApp(message: error.message));
+    return;
+  }
 
   await Supabase.initialize(
     url: AppEnv.supabaseUrl,
@@ -45,4 +50,46 @@ void main() async {
   runApp(const ProviderScope(child: IC01App()));
 
   unawaited(PushNotificationsService.instance.init());
+}
+
+class _ConfigurationErrorApp extends StatelessWidget {
+  const _ConfigurationErrorApp({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 560),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Configurazione Supabase mancante',
+                    style: Theme.of(context).textTheme.headlineSmall,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(message),
+                  const SizedBox(height: 16),
+                  const SelectableText(
+                    'Avvia con:\n'
+                    'flutter run -d chrome '
+                    '--dart-define=SUPABASE_URL=https://<project-ref>.supabase.co '
+                    '--dart-define=SUPABASE_PUBLISHABLE_KEY=<publishable-key>',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }

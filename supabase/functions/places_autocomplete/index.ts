@@ -116,7 +116,11 @@ function findComponent(
     const match = components.find((component) =>
       component.types?.includes(type)
     );
-    const value = match?.longText?.trim() || match?.shortText?.trim();
+    const legacyMatch = match as
+      | (GoogleAddressComponent & { long_name?: string; short_name?: string })
+      | undefined;
+    const value = match?.longText?.trim() || match?.shortText?.trim() ||
+      legacyMatch?.long_name?.trim() || legacyMatch?.short_name?.trim();
     if (value) return value;
   }
 
