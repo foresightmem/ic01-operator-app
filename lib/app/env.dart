@@ -5,7 +5,7 @@ class AppEnv {
   );
   static const supabasePublishableKey = String.fromEnvironment(
     'SUPABASE_PUBLISHABLE_KEY',
-    defaultValue: '',
+    defaultValue: 'sb_publishable_I_UO1Q4AJJaP2VY376RNOA_zlY-X68D',
   );
 
   static const supabaseAnonKey = supabasePublishableKey;
