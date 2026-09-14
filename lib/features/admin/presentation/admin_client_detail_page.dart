@@ -178,6 +178,52 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
     }
   }
 
+  Future<void> _deleteMachine(_MachineWithSite machine) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Elimina macchina'),
+        content: Text(
+          'Vuoi eliminare la macchina ${machine.code}? '
+          'Puoi eliminare solo macchine senza ticket, refill, erogazioni, device o telemetria.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Annulla'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(context).pop(true),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Elimina'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    try {
+      await CustomerMachineOnboardingService().deleteMachine(machine.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Macchina ${machine.code} eliminata.')),
+      );
+      setState(() {
+        _dataFuture = _loadData();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            onboardingUserMessage(error, OnboardingAction.deleteMachine),
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<bool>(
@@ -327,7 +373,8 @@ class _AdminClientDetailPageState extends State<AdminClientDetailPage> {
                       title: 'Nessuna macchina associata',
                       icon: Icons.coffee_maker_outlined,
                     ),
-                  for (final m in data.machines) _MachineCard(machine: m),
+                  for (final m in data.machines)
+                    _MachineCard(machine: m, onDelete: () => _deleteMachine(m)),
                 ],
               );
             },
@@ -460,8 +507,9 @@ class _SiteCard extends StatelessWidget {
 
 class _MachineCard extends StatelessWidget {
   final _MachineWithSite machine;
+  final VoidCallback onDelete;
 
-  const _MachineCard({required this.machine});
+  const _MachineCard({required this.machine, required this.onDelete});
 
   Color _fillColor(double p) {
     if (p <= 20) return AppColors.danger;
@@ -488,24 +536,34 @@ class _MachineCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // prima riga: codice + chip stato
-            Wrap(
-              alignment: WrapAlignment.spaceBetween,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: AppSpacing.sm,
-              runSpacing: AppSpacing.xs,
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  machine.code,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Wrap(
+                    spacing: AppSpacing.sm,
+                    runSpacing: AppSpacing.xs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        machine.code,
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      AppStatusPill(
+                        label:
+                            '${_fillLabel(machine.currentFillPercent)} (${machine.currentFillPercent.toStringAsFixed(0)}%)',
+                        color: color,
+                      ),
+                    ],
                   ),
                 ),
-                AppStatusPill(
-                  label:
-                      '${_fillLabel(machine.currentFillPercent)} (${machine.currentFillPercent.toStringAsFixed(0)}%)',
-                  color: color,
+                IconButton(
+                  tooltip: 'Elimina macchina',
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline),
                 ),
               ],
             ),

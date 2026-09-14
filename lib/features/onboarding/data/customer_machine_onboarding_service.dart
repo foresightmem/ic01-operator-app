@@ -8,6 +8,7 @@ enum OnboardingAction {
   createClient,
   createSite,
   createMachine,
+  deleteMachine,
   deleteClient,
 }
 
@@ -156,6 +157,9 @@ String onboardingUserMessage(Object error, OnboardingAction action) {
       return 'Cliente o sede non validi. Aggiorna i dati e riprova.';
     }
     if (error.message.toLowerCase().contains('non cancellabile')) {
+      if (action == OnboardingAction.deleteMachine) {
+        return 'Questa macchina non può essere eliminata perché contiene storico operativo o un device collegato.';
+      }
       return 'Questo cliente non può essere eliminato perché contiene macchine, ticket o visite.';
     }
   }
@@ -195,6 +199,8 @@ String onboardingUserMessage(Object error, OnboardingAction action) {
       return 'Impossibile creare la sede. Riprova oppure contatta l\'amministratore.';
     case OnboardingAction.createMachine:
       return 'Impossibile creare la macchina. Riprova oppure contatta l\'amministratore.';
+    case OnboardingAction.deleteMachine:
+      return 'Impossibile eliminare la macchina. Riprova oppure contatta l\'amministratore.';
     case OnboardingAction.deleteClient:
       return 'Impossibile eliminare il cliente. Riprova oppure contatta l\'amministratore.';
   }
@@ -604,6 +610,13 @@ class CustomerMachineOnboardingService {
     await _client.rpc(
       'delete_onboarding_client',
       params: {'p_client_id': clientId},
+    );
+  }
+
+  Future<void> deleteMachine(String machineId) async {
+    await _client.rpc(
+      'delete_onboarding_machine',
+      params: {'p_machine_id': machineId},
     );
   }
 }

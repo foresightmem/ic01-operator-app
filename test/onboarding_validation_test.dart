@@ -83,6 +83,10 @@ void main() {
       final notDeletable = PostgrestException(
         message: 'Cliente non cancellabile: contiene macchine, ticket o visite',
       );
+      final machineNotDeletable = PostgrestException(
+        message:
+            'Macchina non cancellabile: contiene ticket, refill, erogazioni, device o telemetria',
+      );
 
       expect(
         onboardingUserMessage(missingRpc, OnboardingAction.createClient),
@@ -99,6 +103,13 @@ void main() {
       expect(
         onboardingUserMessage(notDeletable, OnboardingAction.deleteClient),
         'Questo cliente non può essere eliminato perché contiene macchine, ticket o visite.',
+      );
+      expect(
+        onboardingUserMessage(
+          machineNotDeletable,
+          OnboardingAction.deleteMachine,
+        ),
+        'Questa macchina non può essere eliminata perché contiene storico operativo o un device collegato.',
       );
       expect(
         onboardingUserMessage(Exception('boom'), OnboardingAction.createClient),

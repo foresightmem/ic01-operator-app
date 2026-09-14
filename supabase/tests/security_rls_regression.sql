@@ -59,6 +59,7 @@ begin
   delete from public.refills
   where machine_id in (
     '91300000-0000-0000-0000-000000000001',
+    '91300000-0000-0000-0000-000000000002',
     '92300000-0000-0000-0000-000000000001'
   );
 
@@ -71,6 +72,7 @@ begin
   delete from public.temp_machine_assignments
   where machine_id in (
     '91300000-0000-0000-0000-000000000001',
+    '91300000-0000-0000-0000-000000000002',
     '92300000-0000-0000-0000-000000000001'
   )
   or original_operator_id in (
@@ -91,12 +93,14 @@ begin
   delete from public.machine_consumables
   where machine_id in (
     '91300000-0000-0000-0000-000000000001',
+    '91300000-0000-0000-0000-000000000002',
     '92300000-0000-0000-0000-000000000001'
   );
 
   delete from public.machines
   where id in (
     '91300000-0000-0000-0000-000000000001',
+    '91300000-0000-0000-0000-000000000002',
     '92300000-0000-0000-0000-000000000001'
   );
 
@@ -187,6 +191,7 @@ set name = excluded.name,
 insert into public.machines (id, code, site_id, assigned_operator_id, organization_id)
 values
   ('91300000-0000-0000-0000-000000000001', 'SEC-A-001', '91200000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-0000000000b1', '91000000-0000-0000-0000-000000000001'),
+  ('91300000-0000-0000-0000-000000000002', 'SEC-A-002', '91200000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-0000000000b1', '91000000-0000-0000-0000-000000000001'),
   ('92300000-0000-0000-0000-000000000001', 'SEC-B-001', '92200000-0000-0000-0000-000000000001', '92000000-0000-0000-0000-0000000000b1', '92000000-0000-0000-0000-000000000001')
 on conflict (id) do update
 set code = excluded.code,
@@ -204,6 +209,7 @@ insert into public.machine_consumables (
 )
 values
   ('91300000-0000-0000-0000-000000000001', 'hot'::public.consumable_type, 100, 25, true, now()),
+  ('91300000-0000-0000-0000-000000000002', 'hot'::public.consumable_type, 100, 100, true, now()),
   ('92300000-0000-0000-0000-000000000001', 'hot'::public.consumable_type, 100, 25, true, now())
 on conflict (machine_id, type) do update
 set capacity_units = excluded.capacity_units,
@@ -246,6 +252,7 @@ declare
     'current_user_has_machine_access(uuid)',
     'current_user_has_site_access(uuid)',
     'delete_onboarding_client(uuid)',
+    'delete_onboarding_machine(uuid)',
     'get_control_center_device_detail(uuid)',
     'get_control_center_devices()',
     'get_control_center_events(integer,uuid,text,text,timestamp with time zone,timestamp with time zone)',
@@ -334,6 +341,10 @@ select pg_temp.expect_error(
   'select public.perform_refill_consumable(''92300000-0000-0000-0000-000000000001'', ''hot''::public.consumable_type)',
   'operator A cannot refill machine B'
 );
+select pg_temp.expect_error(
+  'select public.delete_onboarding_machine(''91300000-0000-0000-0000-000000000002'')',
+  'operator A cannot delete machine'
+);
 
 select public.perform_refill_consumable(
   '91300000-0000-0000-0000-000000000001',
@@ -402,6 +413,18 @@ where machine_id = '91300000-0000-0000-0000-000000000001'
 select pg_temp.expect_zero(
   'select count(*) from public.machines where id = ''91300000-0000-0000-0000-000000000001'' and current_fill_percent <> 50',
   'admin A can save tank config and trigger updates current_fill_percent'
+);
+
+select pg_temp.expect_error(
+  'select public.delete_onboarding_machine(''91300000-0000-0000-0000-000000000001'')',
+  'admin A cannot delete machine with ticket/refill history'
+);
+
+select public.delete_onboarding_machine('91300000-0000-0000-0000-000000000002');
+
+select pg_temp.expect_zero(
+  'select count(*) from public.machines where id = ''91300000-0000-0000-0000-000000000002''',
+  'admin A can delete machine without operational history'
 );
 
 select pg_temp.expect_error(
